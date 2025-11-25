@@ -21,6 +21,10 @@ struct AppConfig {
     static let hubSpotAPIKey: String = value(for: "HubSpotAPIKey")
     static let hubSpotPortalID: String = value(for: "HubSpotPortalID")
     
+    // MARK: - Supabase Configuration
+    static let supabaseURL: String = value(for: "SupabaseURL")
+    static let supabaseAnonKey: String = value(for: "SupabaseAnonKey")
+    
     // MARK: - App Information
     static let appName: String = value(for: "AppName")
     static let appVersion: String = value(for: "AppVersion")

@@ -66,7 +66,7 @@ struct ProjectsListView: View {
 
     private var completedProjects: [RehabProject] {
         viewModel.projects.filter { project in
-            project.status.lowercased().contains("completed") ?? false
+            project.status.lowercased().contains("completed")
         }
     }
 }

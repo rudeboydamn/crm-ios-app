@@ -2,9 +2,9 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var authManager: AuthManager
-    @State private var userId = "dammy"
-    @State private var password = "valley"
-    @State private var didAttemptAutoLogin = false
+    @State private var email = ""
+    @State private var password = ""
+    @State private var showSignUp = false
     
     var body: some View {
         NavigationView {
@@ -29,10 +29,11 @@ struct LoginView: View {
                 
                 // Login Form
                 VStack(spacing: 15) {
-                    TextField("User ID", text: $userId)
+                    TextField("Email", text: $email)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .textContentType(.username)
+                        .textContentType(.emailAddress)
                         .autocapitalization(.none)
+                        .keyboardType(.emailAddress)
                     
                     SecureField("Password", text: $password)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -46,7 +47,9 @@ struct LoginView: View {
                     }
 
                     Button(action: {
-                        authManager.signIn(userId: userId, password: password)
+                        Task {
+                            await authManager.signIn(email: email, password: password)
+                        }
                     }) {
                         if authManager.isLoading {
                             ProgressView()
@@ -62,14 +65,13 @@ struct LoginView: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
-                    .disabled(authManager.isLoading || userId.isEmpty || password.isEmpty)
+                    .disabled(authManager.isLoading || email.isEmpty || password.isEmpty)
                     
                     Button(action: {
-                        authManager.authenticateWithBiometrics { result in
-                            switch result {
-                            case .success:
-                                print("Biometric auth successful")
-                            case .failure(let error):
+                        Task {
+                            do {
+                                try await authManager.authenticateWithBiometrics()
+                            } catch {
                                 authManager.errorMessage = error.localizedDescription
                             }
                         }
@@ -90,30 +92,28 @@ struct LoginView: View {
                 Spacer()
                 
                 // Sign Up Link
-                VStack(spacing: 4) {
-                    Text("Need access?")
+                HStack {
+                    Text("Don't have an account?")
                         .font(.footnote)
                         .foregroundColor(.secondary)
-                    Text("Please contact the Keystone Vale admin team to request an account.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                    
+                    Button(action: { showSignUp = true }) {
+                        Text("Sign Up")
+                            .font(.footnote)
+                            .fontWeight(.semibold)
+                    }
                 }
                 .padding(.bottom, 30)
             }
             .navigationBarHidden(true)
-            .onAppear(perform: attemptAutoLogin)
+            .sheet(isPresented: $showSignUp) {
+                SignUpView()
+                    .environmentObject(authManager)
+            }
         }
     }
     
     private var brandSymbolName: String {
         return "house.circle.fill"
-    }
-    
-    private func attemptAutoLogin() {
-        guard !didAttemptAutoLogin else { return }
-        didAttemptAutoLogin = true
-        authManager.signIn(userId: userId, password: password)
     }
 }

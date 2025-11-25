@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class PortfolioViewModel: ObservableObject {
     @Published var dashboardMetrics: PortfolioDashboardMetrics?
@@ -13,34 +14,82 @@ final class PortfolioViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let networkService: NetworkService
+    private let propertyService = PropertyDatabaseService.shared
+    private let supabase = SupabaseManager.shared
     private var cancellables = Set<AnyCancellable>()
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
-    }
+    init() {}
     
     func fetchPortfolioData() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchPortfolio()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                // Fetch properties
+                let fetchedProperties = try await propertyService.fetchAll()
+                
+                // Fetch portfolio dashboard metrics (may need RPC function)
+                let dashboard: PortfolioDashboardMetrics = try await supabase.database
+                    .rpc("get_portfolio_dashboard")
+                    .execute()
+                    .value
+                
+                // Fetch related entities
+                let fetchedUnits: [Unit] = try await supabase.database
+                    .from("units")
+                    .select()
+                    .execute()
+                    .value
+                
+                let fetchedResidents: [Resident] = try await supabase.database
+                    .from("residents")
+                    .select()
+                    .execute()
+                    .value
+                
+                let fetchedLeases: [Lease] = try await supabase.database
+                    .from("leases")
+                    .select()
+                    .execute()
+                    .value
+                
+                let fetchedMortgages: [Mortgage] = try await supabase.database
+                    .from("mortgages")
+                    .select()
+                    .execute()
+                    .value
+                
+                let fetchedExpenses: [Expense] = try await supabase.database
+                    .from("expenses")
+                    .select()
+                    .execute()
+                    .value
+                
+                let fetchedPayments: [Payment] = try await supabase.database
+                    .from("payments")
+                    .select()
+                    .execute()
+                    .value
+                
+                await MainActor.run {
+                    self.dashboardMetrics = dashboard
+                    self.properties = fetchedProperties
+                    self.units = fetchedUnits
+                    self.residents = fetchedResidents
+                    self.leases = fetchedLeases
+                    self.mortgages = fetchedMortgages
+                    self.expenses = fetchedExpenses
+                    self.payments = fetchedPayments
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] response in
-                self?.dashboardMetrics = response.data.dashboard
-                self?.properties = response.data.properties
-                self?.units = response.data.units
-                self?.residents = response.data.residents
-                self?.leases = response.data.leases
-                self?.mortgages = response.data.mortgages
-                self?.expenses = response.data.expenses
-                self?.payments = response.data.payments
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     // Helper computed properties

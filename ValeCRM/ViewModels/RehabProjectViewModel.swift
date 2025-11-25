@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class RehabProjectViewModel: ObservableObject {
     @Published var projects: [RehabProject] = []
@@ -7,8 +8,10 @@ final class RehabProjectViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var selectedStatus: String?
     
-    private let networkService: NetworkService
+    private let databaseService = ProjectDatabaseService.shared
+    private let realtimeManager = RealtimeManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var realtimeTask: Task<Void, Never>?
     
     var filteredProjects: [RehabProject] {
         guard let status = selectedStatus else { return projects }
@@ -51,77 +54,131 @@ final class RehabProjectViewModel: ObservableObject {
         return rois.reduce(0, +) / Double(rois.count)
     }
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
+    init() {
+        setupRealtimeSubscription()
+    }
+    
+    deinit {
+        realtimeTask?.cancel()
     }
     
     func fetchProjects() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchProjects()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let fetchedProjects = try await databaseService.fetchAll()
+                await MainActor.run {
+                    self.projects = fetchedProjects
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] projects in
-                self?.projects = projects
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func createProject(_ project: RehabProject) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.createProject(project)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let createdProject = try await databaseService.create(project)
+                await MainActor.run {
+                    if !self.projects.contains(where: { $0.id == createdProject.id }) {
+                        self.projects.append(createdProject)
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] newProject in
-                self?.projects.append(newProject)
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func updateProject(_ project: RehabProject) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.updateProject(project)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let updatedProject = try await databaseService.update(project)
+                await MainActor.run {
+                    if let index = self.projects.firstIndex(where: { $0.id == updatedProject.id }) {
+                        self.projects[index] = updatedProject
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] updatedProject in
-                if let index = self?.projects.firstIndex(where: { $0.id == updatedProject.id }) {
-                    self?.projects[index] = updatedProject
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
                 }
-            })
-            .store(in: &cancellables)
+            }
+        }
     }
     
     func deleteProject(_ project: RehabProject) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.deleteProject(id: project.id)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                try await databaseService.delete(id: project.id)
+                await MainActor.run {
+                    self.projects.removeAll { $0.id == project.id }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] _ in
-                self?.projects.removeAll { $0.id == project.id }
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func clearFilter() {
         selectedStatus = nil
+    }
+    
+    // MARK: - Real-time Subscriptions
+    
+    private func setupRealtimeSubscription() {
+        realtimeTask = Task {
+            do {
+                try await realtimeManager.subscribeToAll(
+                    table: "projects",
+                    onInsert: { [weak self] (project: RehabProject) in
+                        guard let self = self else { return }
+                        if !self.projects.contains(where: { $0.id == project.id }) {
+                            self.projects.append(project)
+                        }
+                    },
+                    onUpdate: { [weak self] (project: RehabProject) in
+                        guard let self = self else { return }
+                        if let index = self.projects.firstIndex(where: { $0.id == project.id }) {
+                            self.projects[index] = project
+                        }
+                    },
+                    onDelete: { [weak self] (projectId: String) in
+                        guard let self = self else { return }
+                        if let uuid = UUID(uuidString: projectId) {
+                            self.projects.removeAll { $0.id == uuid }
+                        }
+                    }
+                )
+            } catch {
+                print("Failed to setup realtime subscription: \(error)")
+            }
+        }
     }
 }

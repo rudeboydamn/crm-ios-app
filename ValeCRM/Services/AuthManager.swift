@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import LocalAuthentication
+import Supabase
 
 enum AuthError: Error, LocalizedError {
     case invalidCredentials
@@ -66,86 +67,130 @@ final class AuthManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let networkService: NetworkService
-    private let keychainHelper = KeychainHelper.shared
+    private let supabase = SupabaseManager.shared
+    private var authStateTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     
-    private let jwtTokenKey = "com.keystonevale.valeCRM.jwtToken"
-    private let userKey = "com.keystonevale.valeCRM.user"
-    private let shouldBypassAuth = true
+    init() {
+        setupAuthStateListener()
+        checkInitialAuthStatus()
+    }
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
-        checkAuthStatus()
-        if shouldBypassAuth && !isAuthenticated {
-            bypassAuthentication()
-        }
+    deinit {
+        authStateTask?.cancel()
     }
     
     // MARK: - Authentication Methods
     
-    func signIn(userId: String, password: String) {
+    /// Sign in with email and password
+    func signIn(email: String, password: String) async {
         isLoading = true
         errorMessage = nil
         
-        let body: [String: String] = [
-            "userId": userId,
-            "password": password
-        ]
-        
-        guard let jsonData = try? JSONEncoder().encode(body) else {
-            errorMessage = "Failed to encode login data"
-            isLoading = false
-            return
-        }
-        
-        networkService.request(from: "/api/auth/signin", method: "POST", body: jsonData)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
-                }
-            }, receiveValue: { [weak self] (response: AuthResponse) in
-                self?.handleAuthSuccess(response)
-            })
-            .store(in: &cancellables)
-    }
-    
-    
-    func signOut() {
         do {
-            try keychainHelper.delete(for: jwtTokenKey)
-            try keychainHelper.delete(for: userKey)
+            let session = try await supabase.auth.signIn(
+                email: email,
+                password: password
+            )
+            
+            await MainActor.run {
+                self.isAuthenticated = true
+                self.isLoading = false
+            }
+            
+            // Fetch user profile from database
+            await fetchUserProfile(userId: session.user.id.uuidString)
+            
         } catch {
-            print("Error clearing keychain: \(error)")
+            await MainActor.run {
+                self.errorMessage = SupabaseError.map(error).localizedDescription
+                self.isLoading = false
+            }
         }
-        
-        // Clear NetworkService JWT token
-        networkService.setAuthToken(nil)
-        
-        isAuthenticated = false
-        currentUser = nil
     }
     
-    func authenticateWithBiometrics(completion: @escaping (Result<Void, AuthError>) -> Void) {
+    /// Sign up new user
+    func signUp(email: String, password: String, name: String, userId: String) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Create auth user
+            let authResponse = try await supabase.auth.signUp(
+                email: email,
+                password: password
+            )
+            
+            guard let user = authResponse.user else {
+                throw SupabaseError.authenticationFailed("No user returned")
+            }
+            
+            // Create user profile in database
+            let userProfile = User(
+                id: user.id.uuidString,
+                userId: userId,
+                email: email,
+                name: name,
+                role: "user",
+                isActive: true,
+                createdAt: Date(),
+                lastLogin: Date()
+            )
+            
+            try await supabase.database
+                .from("users")
+                .insert(userProfile)
+                .execute()
+            
+            await MainActor.run {
+                self.currentUser = userProfile
+                self.isAuthenticated = true
+                self.isLoading = false
+            }
+            
+        } catch {
+            await MainActor.run {
+                self.errorMessage = SupabaseError.map(error).localizedDescription
+                self.isLoading = false
+            }
+        }
+    }
+    
+    
+    /// Sign out current user
+    func signOut() async {
+        do {
+            try await supabase.auth.signOut()
+            
+            await MainActor.run {
+                self.isAuthenticated = false
+                self.currentUser = nil
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = SupabaseError.map(error).localizedDescription
+            }
+        }
+    }
+    
+    /// Authenticate with biometrics (Face ID / Touch ID)
+    func authenticateWithBiometrics() async throws {
         let context = LAContext()
         var error: NSError?
         
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            completion(.failure(.biometricNotAvailable))
-            return
+            throw AuthError.biometricNotAvailable
         }
         
-        context.evaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
-            localizedReason: "Authenticate to access ValeCRM"
-        ) { [weak self] success, error in
-            DispatchQueue.main.async {
+        return try await withCheckedThrowingContinuation { continuation in
+            context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: "Authenticate to access ValeCRM"
+            ) { success, error in
                 if success {
-                    self?.checkAuthStatus()
-                    completion(.success(()))
+                    continuation.resume()
                 } else {
-                    completion(.failure(.biometricFailed))
+                    continuation.resume(throwing: AuthError.biometricFailed)
                 }
             }
         }
@@ -153,63 +198,102 @@ final class AuthManager: ObservableObject {
     
     // MARK: - Helper Methods
     
-    private func handleAuthSuccess(_ response: AuthResponse) {
-        do {
-            // Store JWT token
-            try keychainHelper.save(response.token, for: jwtTokenKey)
-            
-            // Store user data
-            let encoder = JSONEncoder()
-            let userData = try encoder.encode(response.user)
-            try keychainHelper.save(userData, for: userKey)
-            
-            // Update NetworkService with JWT token
-            networkService.setAuthToken(response.token)
-            
-            currentUser = response.user
-            isAuthenticated = true
-        } catch {
-            errorMessage = "Failed to save authentication data: \(error.localizedDescription)"
+    /// Setup listener for auth state changes
+    private func setupAuthStateListener() {
+        authStateTask = Task {
+            for await state in await supabase.auth.authStateChanges {
+                await handleAuthStateChange(state.event, session: state.session)
+            }
         }
     }
     
-    private func checkAuthStatus() {
+    /// Handle auth state changes
+    private func handleAuthStateChange(_ event: AuthChangeEvent, session: Session?) async {
+        await MainActor.run {
+            switch event {
+            case .signedIn:
+                self.isAuthenticated = true
+            case .signedOut:
+                self.isAuthenticated = false
+                self.currentUser = nil
+            case .tokenRefreshed:
+                // Token refreshed, session is still valid
+                break
+            case .userUpdated:
+                // User metadata updated
+                break
+            default:
+                break
+            }
+        }
+        
+        // Fetch user profile when signed in
+        if event == .signedIn, let userId = session?.user.id.uuidString {
+            await fetchUserProfile(userId: userId)
+        }
+    }
+    
+    /// Check initial auth status on app launch
+    private func checkInitialAuthStatus() {
+        Task {
+            do {
+                let session = try await supabase.auth.session
+                
+                await MainActor.run {
+                    self.isAuthenticated = session.accessToken.isEmpty == false
+                }
+                
+                if isAuthenticated {
+                    await fetchUserProfile(userId: session.user.id.uuidString)
+                }
+            } catch {
+                await MainActor.run {
+                    self.isAuthenticated = false
+                    self.currentUser = nil
+                }
+            }
+        }
+    }
+    
+    /// Fetch user profile from database
+    private func fetchUserProfile(userId: String) async {
         do {
-            let jwtToken = try keychainHelper.readString(for: jwtTokenKey)
-            let userData = try keychainHelper.read(for: userKey)
+            let response: [User] = try await supabase.database
+                .from("users")
+                .select()
+                .eq("id", value: userId)
+                .execute()
+                .value
             
-            let decoder = JSONDecoder()
-            let user = try decoder.decode(User.self, from: userData)
-            
-            if !jwtToken.isEmpty {
-                // Update NetworkService with existing JWT token
-                networkService.setAuthToken(jwtToken)
-                currentUser = user
-                isAuthenticated = true
+            await MainActor.run {
+                self.currentUser = response.first
             }
         } catch {
-            isAuthenticated = false
-            currentUser = nil
+            print("Failed to fetch user profile: \(error)")
         }
     }
-
-    private func bypassAuthentication() {
-        let mockUser = User(
-            id: UUID().uuidString,
-            userId: "demo",
-            email: "demo@keystonevale.org",
-            name: "Demo User",
-            role: "admin",
-            isActive: true,
-            createdAt: Date(),
-            lastLogin: Date()
-        )
-        currentUser = mockUser
-        isAuthenticated = true
-        networkService.setAuthToken(nil)
+    
+    /// Get current session
+    func getCurrentSession() async throws -> Session {
+        return try await supabase.auth.session
     }
     
-    func getJWTToken() -> String? {
-        try? keychainHelper.readString(for: jwtTokenKey)
+    /// Reset password
+    func resetPassword(email: String) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            try await supabase.auth.resetPasswordForEmail(email)
+            
+            await MainActor.run {
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = SupabaseError.map(error).localizedDescription
+                self.isLoading = false
+            }
+        }
     }
 }

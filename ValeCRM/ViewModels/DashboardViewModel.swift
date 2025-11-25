@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class DashboardViewModel: ObservableObject {
     @Published var metrics: ReportDashboardMetrics?
@@ -7,28 +8,36 @@ final class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastRefresh: Date?
     
-    private let networkService: NetworkService
+    private let supabase = SupabaseManager.shared
     private var cancellables = Set<AnyCancellable>()
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
-    }
+    init() {}
     
     func fetchMetrics() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchDashboardMetrics()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                // Fetch dashboard metrics from database
+                // This may require a custom RPC function in Supabase
+                let response: ReportDashboardMetrics = try await supabase.database
+                    .rpc("get_dashboard_metrics")
+                    .execute()
+                    .value
+                
+                await MainActor.run {
+                    self.metrics = response
+                    self.lastRefresh = Date()
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] metrics in
-                self?.metrics = metrics
-                self?.lastRefresh = Date()
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func refresh() {

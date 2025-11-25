@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class CommunicationViewModel: ObservableObject {
     @Published var communications: [Communication] = []
@@ -8,8 +9,10 @@ final class CommunicationViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var selectedType: CommunicationType?
     
-    private let networkService: NetworkService
+    private let databaseService = CommunicationDatabaseService.shared
+    private let realtimeManager = RealtimeManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var realtimeTask: Task<Void, Never>?
     
     var filteredCommunications: [Communication] {
         communications.filter { comm in
@@ -28,78 +31,132 @@ final class CommunicationViewModel: ObservableObject {
         Array(filteredCommunications.prefix(10))
     }
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
+    init() {
+        setupRealtimeSubscription()
+    }
+    
+    deinit {
+        realtimeTask?.cancel()
     }
     
     func fetchCommunications() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchCommunications()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let fetchedCommunications = try await databaseService.fetchAll()
+                await MainActor.run {
+                    self.communications = fetchedCommunications
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] communications in
-                self?.communications = communications
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func createCommunication(_ communication: Communication) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.createCommunication(communication)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let createdCommunication = try await databaseService.create(communication)
+                await MainActor.run {
+                    if !self.communications.contains(where: { $0.id == createdCommunication.id }) {
+                        self.communications.insert(createdCommunication, at: 0)
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] communication in
-                self?.communications.insert(communication, at: 0)
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func updateCommunication(_ communication: Communication) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.updateCommunication(communication)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let updatedCommunication = try await databaseService.update(communication)
+                await MainActor.run {
+                    if let index = self.communications.firstIndex(where: { $0.id == updatedCommunication.id }) {
+                        self.communications[index] = updatedCommunication
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] updatedCommunication in
-                if let index = self?.communications.firstIndex(where: { $0.id == updatedCommunication.id }) {
-                    self?.communications[index] = updatedCommunication
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
                 }
-            })
-            .store(in: &cancellables)
+            }
+        }
     }
     
     func deleteCommunication(_ communication: Communication) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.deleteCommunication(id: communication.id)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                try await databaseService.delete(id: communication.id)
+                await MainActor.run {
+                    self.communications.removeAll { $0.id == communication.id }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] _ in
-                self?.communications.removeAll { $0.id == communication.id }
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func clearFilters() {
         selectedType = nil
         searchText = ""
+    }
+    
+    // MARK: - Real-time Subscriptions
+    
+    private func setupRealtimeSubscription() {
+        realtimeTask = Task {
+            do {
+                try await realtimeManager.subscribeToAll(
+                    table: "communications",
+                    onInsert: { [weak self] (communication: Communication) in
+                        guard let self = self else { return }
+                        if !self.communications.contains(where: { $0.id == communication.id }) {
+                            self.communications.insert(communication, at: 0)
+                        }
+                    },
+                    onUpdate: { [weak self] (communication: Communication) in
+                        guard let self = self else { return }
+                        if let index = self.communications.firstIndex(where: { $0.id == communication.id }) {
+                            self.communications[index] = communication
+                        }
+                    },
+                    onDelete: { [weak self] (commId: String) in
+                        guard let self = self else { return }
+                        if let uuid = UUID(uuidString: commId) {
+                            self.communications.removeAll { $0.id == uuid }
+                        }
+                    }
+                )
+            } catch {
+                print("Failed to setup realtime subscription: \(error)")
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class LeadViewModel: ObservableObject {
     @Published var leads: [Lead] = []
@@ -10,9 +11,11 @@ final class LeadViewModel: ObservableObject {
     @Published var selectedStatus: LeadStatus?
     @Published var selectedPriority: LeadPriority?
     
-    private let networkService: NetworkService
-    private let hubspotService: HubSpotService
+    private let databaseService = LeadDatabaseService.shared
+    private let realtimeManager = RealtimeManager.shared
+    private let hubspotService = HubSpotService.shared
     private var cancellables = Set<AnyCancellable>()
+    private var realtimeTask: Task<Void, Never>?
     
     var filteredLeads: [Lead] {
         leads.filter { lead in
@@ -37,103 +40,108 @@ final class LeadViewModel: ObservableObject {
         Array(leads.prefix(5))
     }
     
-    init(networkService: NetworkService, hubspotService: HubSpotService = .shared) {
-        self.networkService = networkService
-        self.hubspotService = hubspotService
+    init() {
+        setupRealtimeSubscription()
+    }
+    
+    deinit {
+        realtimeTask?.cancel()
     }
     
     func fetchLeads() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchLeads()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let fetchedLeads = try await databaseService.fetchAll()
+                await MainActor.run {
+                    self.leads = fetchedLeads
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] leads in
-                self?.leads = leads
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func createLead(_ lead: Lead) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.createLead(lead)
-            .flatMap { [weak self] createdLead -> AnyPublisher<Lead, APIError> in
-                guard let self = self else {
-                    return Fail(error: APIError.networkError("ViewModel deallocated")).eraseToAnyPublisher()
-                }
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let createdLead = try await databaseService.create(lead)
                 
-                return self.hubspotService.syncLeadToHubSpot(createdLead)
-                    .map { hubspotId in
-                        var updatedLead = createdLead
-                        updatedLead.hubspotId = hubspotId
-                        return updatedLead
+                // Optionally sync to HubSpot
+                _ = try? await syncToHubSpot(createdLead)
+                
+                await MainActor.run {
+                    // Real-time will handle the insert, but add optimistically
+                    if !self.leads.contains(where: { $0.id == createdLead.id }) {
+                        self.leads.insert(createdLead, at: 0)
                     }
-                    .catch { _ in Just(createdLead).setFailureType(to: APIError.self) }
-                    .eraseToAnyPublisher()
-            }
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] lead in
-                self?.leads.insert(lead, at: 0)
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func updateLead(_ lead: Lead) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.updateLead(lead)
-            .flatMap { [weak self] updatedLead -> AnyPublisher<Lead, APIError> in
-                guard let self = self else {
-                    return Fail(error: APIError.networkError("ViewModel deallocated")).eraseToAnyPublisher()
-                }
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let updatedLead = try await databaseService.update(lead)
                 
-                return self.hubspotService.syncLeadToHubSpot(updatedLead)
-                    .map { hubspotId in
-                        var finalLead = updatedLead
-                        finalLead.hubspotId = hubspotId
-                        return finalLead
+                // Optionally sync to HubSpot
+                _ = try? await syncToHubSpot(updatedLead)
+                
+                await MainActor.run {
+                    // Real-time will handle the update, but update optimistically
+                    if let index = self.leads.firstIndex(where: { $0.id == updatedLead.id }) {
+                        self.leads[index] = updatedLead
                     }
-                    .catch { _ in Just(updatedLead).setFailureType(to: APIError.self) }
-                    .eraseToAnyPublisher()
+                    self.isLoading = false
+                    self.errorMessage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
             }
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
-                }
-            }, receiveValue: { [weak self] updatedLead in
-                if let index = self?.leads.firstIndex(where: { $0.id == updatedLead.id }) {
-                    self?.leads[index] = updatedLead
-                }
-            })
-            .store(in: &cancellables)
+        }
     }
     
     func deleteLead(_ lead: Lead) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.deleteLead(id: lead.id)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                try await databaseService.delete(id: lead.id)
+                
+                await MainActor.run {
+                    // Real-time will handle the delete, but remove optimistically
+                    self.leads.removeAll { $0.id == lead.id }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] _ in
-                self?.leads.removeAll { $0.id == lead.id }
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func clearFilters() {
@@ -141,5 +149,82 @@ final class LeadViewModel: ObservableObject {
         selectedStatus = nil
         selectedPriority = nil
         searchText = ""
+    }
+    
+    // MARK: - Real-time Subscriptions
+    
+    private func setupRealtimeSubscription() {
+        realtimeTask = Task {
+            do {
+                try await realtimeManager.subscribeToAll(
+                    table: "leads",
+                    onInsert: { [weak self] (lead: Lead) in
+                        guard let self = self else { return }
+                        if !self.leads.contains(where: { $0.id == lead.id }) {
+                            self.leads.insert(lead, at: 0)
+                        }
+                    },
+                    onUpdate: { [weak self] (lead: Lead) in
+                        guard let self = self else { return }
+                        if let index = self.leads.firstIndex(where: { $0.id == lead.id }) {
+                            self.leads[index] = lead
+                        }
+                    },
+                    onDelete: { [weak self] (leadId: String) in
+                        guard let self = self else { return }
+                        if let uuid = UUID(uuidString: leadId) {
+                            self.leads.removeAll { $0.id == uuid }
+                        }
+                    }
+                )
+            } catch {
+                print("Failed to setup realtime subscription: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func syncToHubSpot(_ lead: Lead) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            hubspotService.syncLeadToHubSpot(lead)
+                .sink(
+                    receiveCompletion: { completion in
+                        if case .failure(let error) = completion {
+                            continuation.resume(throwing: error)
+                        }
+                    },
+                    receiveValue: { hubspotId in
+                        continuation.resume(returning: hubspotId)
+                    }
+                )
+                .store(in: &self.cancellables)
+        }
+    }
+    
+    /// Search leads using database query
+    func searchLeads(query: String) {
+        guard !query.isEmpty else {
+            fetchLeads()
+            return
+        }
+        
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let results = try await databaseService.search(query: query)
+                await MainActor.run {
+                    self.leads = results
+                    self.isLoading = false
+                    self.errorMessage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
 }

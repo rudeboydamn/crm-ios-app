@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 final class PropertyViewModel: ObservableObject {
     @Published var properties: [Property] = []
@@ -9,8 +10,10 @@ final class PropertyViewModel: ObservableObject {
     @Published var selectedType: String?
     @Published var selectedStatus: String?
     
-    private let networkService: NetworkService
+    private let databaseService = PropertyDatabaseService.shared
+    private let realtimeManager = RealtimeManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var realtimeTask: Task<Void, Never>?
     
     var filteredProperties: [Property] {
         properties.filter { property in
@@ -55,79 +58,133 @@ final class PropertyViewModel: ObservableObject {
         properties.filter { $0.status != "for_sale" }
     }
     
-    init(networkService: NetworkService) {
-        self.networkService = networkService
+    init() {
+        setupRealtimeSubscription()
+    }
+    
+    deinit {
+        realtimeTask?.cancel()
     }
     
     func fetchProperties() {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.fetchProperties()
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let fetchedProperties = try await databaseService.fetchAll()
+                await MainActor.run {
+                    self.properties = fetchedProperties
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] properties in
-                self?.properties = properties
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func createProperty(_ property: Property) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.createProperty(property)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let createdProperty = try await databaseService.create(property)
+                await MainActor.run {
+                    if !self.properties.contains(where: { $0.id == createdProperty.id }) {
+                        self.properties.append(createdProperty)
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] newProperty in
-                self?.properties.append(newProperty)
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func updateProperty(_ property: Property) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.updateProperty(property)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                let updatedProperty = try await databaseService.update(property)
+                await MainActor.run {
+                    if let index = self.properties.firstIndex(where: { $0.id == updatedProperty.id }) {
+                        self.properties[index] = updatedProperty
+                    }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] updatedProperty in
-                if let index = self?.properties.firstIndex(where: { $0.id == updatedProperty.id }) {
-                    self?.properties[index] = updatedProperty
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
                 }
-            })
-            .store(in: &cancellables)
+            }
+        }
     }
     
     func deleteProperty(_ property: Property) {
-        isLoading = true
-        errorMessage = nil
-        
-        networkService.deleteProperty(id: property.id)
-            .sink(receiveCompletion: { [weak self] completion in
-                self?.isLoading = false
-                if case .failure(let error) = completion {
-                    self?.errorMessage = error.localizedDescription
+        Task {
+            await MainActor.run { self.isLoading = true }
+            
+            do {
+                try await databaseService.delete(id: property.id)
+                await MainActor.run {
+                    self.properties.removeAll { $0.id == property.id }
+                    self.isLoading = false
+                    self.errorMessage = nil
                 }
-            }, receiveValue: { [weak self] _ in
-                self?.properties.removeAll { $0.id == property.id }
-            })
-            .store(in: &cancellables)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = SupabaseError.map(error).localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     func clearFilters() {
         selectedType = nil
         selectedStatus = nil
         searchText = ""
+    }
+    
+    // MARK: - Real-time Subscriptions
+    
+    private func setupRealtimeSubscription() {
+        realtimeTask = Task {
+            do {
+                try await realtimeManager.subscribeToAll(
+                    table: "properties",
+                    onInsert: { [weak self] (property: Property) in
+                        guard let self = self else { return }
+                        if !self.properties.contains(where: { $0.id == property.id }) {
+                            self.properties.append(property)
+                        }
+                    },
+                    onUpdate: { [weak self] (property: Property) in
+                        guard let self = self else { return }
+                        if let index = self.properties.firstIndex(where: { $0.id == property.id }) {
+                            self.properties[index] = property
+                        }
+                    },
+                    onDelete: { [weak self] (propertyId: String) in
+                        guard let self = self else { return }
+                        if let uuid = UUID(uuidString: propertyId) {
+                            self.properties.removeAll { $0.id == uuid }
+                        }
+                    }
+                )
+            } catch {
+                print("Failed to setup realtime subscription: \(error)")
+            }
+        }
     }
 }

@@ -35,44 +35,58 @@ enum ReportPeriod: String, Codable, CaseIterable {
 
 struct ReportDashboardMetrics: Codable {
     // Leads Metrics
-    var totalLeads: Int
-    var newLeads: Int
-    var qualifiedLeads: Int
-    var hotLeads: Int
-    var convertedLeads: Int
-    var conversionRate: Double
+    var totalLeads: Int?
+    var newLeads: Int?
+    var qualifiedLeads: Int?
+    var hotLeads: Int?
+    var convertedLeads: Int?
+    var conversionRate: Double?
     
     // Projects Metrics
-    var totalProjects: Int
-    var activeProjects: Int
-    var completedProjects: Int
-    var totalProjectValue: Double
-    var averageROI: Double
+    var totalProjects: Int?
+    var activeProjects: Int?
+    var completedProjects: Int?
+    var totalProjectValue: Double?
+    var totalProjectBudget: Double?
+    var totalProjectSpent: Double?
+    var averageROI: Double?
     
     // Portfolio Metrics
-    var totalProperties: Int
-    var totalUnits: Int
-    var occupancyRate: Double
-    var totalRentCollected: Double
-    var totalRentDue: Double
-    var collectionRate: Double
+    var totalProperties: Int?
+    var totalUnits: Int?
+    var occupiedUnits: Int?
+    var vacantUnits: Int?
+    var occupancyRate: Double?
+    var totalPortfolioValue: Double?
+    var totalMonthlyRent: Double?
+    var totalRentCollected: Double?
+    var totalRentDue: Double?
+    var collectionRate: Double?
     
     // Financial Metrics
-    var totalRevenue: Double
-    var totalExpenses: Double
-    var netIncome: Double
-    var profitMargin: Double
+    var monthlyRevenue: Double?
+    var monthlyExpenses: Double?
+    var netCashFlow: Double?
+    var totalRevenue: Double?
+    var totalExpenses: Double?
+    var netIncome: Double?
+    var profitMargin: Double?
     
     // Activity Metrics
-    var pendingTasks: Int
-    var overdueTasks: Int
-    var completedTasks: Int
-    var upcomingMeetings: Int
+    var totalTasks: Int?
+    var pendingTasks: Int?
+    var inProgressTasks: Int?
+    var overdueTasks: Int?
+    var completedTasks: Int?
+    var upcomingMeetings: Int?
     
     // Client Metrics
-    var totalClients: Int
-    var activeClients: Int
-    var newClients: Int
+    var totalClients: Int?
+    var activeClients: Int?
+    var newClients: Int?
+    
+    // Timestamp
+    var generatedAt: String?
 }
 
 struct LeadSourceMetric: Identifiable, Codable {

@@ -40,18 +40,19 @@ final class HubSpotService: ObservableObject {
     // MARK: - Contacts
     
     func createContact(from lead: Lead) -> AnyPublisher<HubSpotContact, Error> {
-        let properties: [String: String] = [
-            "firstname": lead.firstName,
-            "lastname": lead.lastName,
-            "email": lead.email,
-            "phone": lead.phone,
-            "address": lead.propertyAddress,
-            "city": lead.propertyCity,
-            "state": lead.propertyState,
-            "zip": lead.propertyZip,
-            "lifecyclestage": mapLeadStatusToLifecycle(lead.status),
-            "hs_lead_status": lead.status.rawValue
-        ]
+        var properties: [String: String] = [:]
+        if let firstName = lead.firstName { properties["firstname"] = firstName }
+        if let lastName = lead.lastName { properties["lastname"] = lastName }
+        if let email = lead.email { properties["email"] = email }
+        if let phone = lead.phone { properties["phone"] = phone }
+        if let address = lead.propertyAddress { properties["address"] = address }
+        if let city = lead.propertyCity { properties["city"] = city }
+        if let state = lead.propertyState { properties["state"] = state }
+        if let zip = lead.propertyZip { properties["zip"] = zip }
+        if let status = lead.status {
+            properties["lifecyclestage"] = mapLeadStatusToLifecycle(status)
+            properties["hs_lead_status"] = status.rawValue
+        }
         
         let contact = HubSpotContact(properties: properties)
         
@@ -63,18 +64,19 @@ final class HubSpotService: ObservableObject {
     }
     
     func updateContact(hubspotId: String, from lead: Lead) -> AnyPublisher<HubSpotContact, Error> {
-        let properties: [String: String] = [
-            "firstname": lead.firstName,
-            "lastname": lead.lastName,
-            "email": lead.email,
-            "phone": lead.phone,
-            "address": lead.propertyAddress,
-            "city": lead.propertyCity,
-            "state": lead.propertyState,
-            "zip": lead.propertyZip,
-            "lifecyclestage": mapLeadStatusToLifecycle(lead.status),
-            "hs_lead_status": lead.status.rawValue
-        ]
+        var properties: [String: String] = [:]
+        if let firstName = lead.firstName { properties["firstname"] = firstName }
+        if let lastName = lead.lastName { properties["lastname"] = lastName }
+        if let email = lead.email { properties["email"] = email }
+        if let phone = lead.phone { properties["phone"] = phone }
+        if let address = lead.propertyAddress { properties["address"] = address }
+        if let city = lead.propertyCity { properties["city"] = city }
+        if let state = lead.propertyState { properties["state"] = state }
+        if let zip = lead.propertyZip { properties["zip"] = zip }
+        if let status = lead.status {
+            properties["lifecyclestage"] = mapLeadStatusToLifecycle(status)
+            properties["hs_lead_status"] = status.rawValue
+        }
         
         let contact = HubSpotContact(id: hubspotId, properties: properties)
         
@@ -100,9 +102,12 @@ final class HubSpotService: ObservableObject {
     // MARK: - Deals
     
     func createDeal(from lead: Lead, contactId: String) -> AnyPublisher<HubSpotDeal, Error> {
+        let dealName = "\(lead.propertyAddress ?? "Property") - \(lead.fullName)"
+        let dealStage = mapLeadStatusToDealStage(lead.status ?? .new)
+        
         var properties: [String: String] = [
-            "dealname": "\(lead.propertyAddress) - \(lead.fullName)",
-            "dealstage": mapLeadStatusToDealStage(lead.status),
+            "dealname": dealName,
+            "dealstage": dealStage,
             "pipeline": "default"
         ]
         

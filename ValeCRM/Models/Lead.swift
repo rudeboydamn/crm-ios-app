@@ -28,31 +28,33 @@ enum LeadPriority: String, Codable, CaseIterable {
 }
 
 struct Lead: Identifiable, Codable {
-    let id: UUID
-    var createdAt: Date
-    var updatedAt: Date
+    let id: String  // Database uses TEXT not UUID
+    var createdAt: Date?
+    var updatedAt: Date?
     var hubspotId: String?
 
-    var firstName: String
-    var lastName: String
-    var email: String
-    var phone: String
+    var firstName: String?
+    var lastName: String?
+    var email: String?
+    var phone: String?
 
-    var source: LeadSource
-    var status: LeadStatus
-    var priority: LeadPriority
-    var tags: [String]
+    var source: LeadSource?
+    var status: LeadStatus?
+    var priority: LeadPriority?
+    var tags: [String]?
 
-    var propertyAddress: String
-    var propertyCity: String
-    var propertyState: String
-    var propertyZip: String
+    var propertyAddress: String?
+    var propertyCity: String?
+    var propertyState: String?
+    var propertyZip: String?
 
     var askingPrice: Double?
     var offerAmount: Double?
     var arv: Double?
 
     var fullName: String {
-        "\(firstName) \(lastName)"
+        let first = firstName ?? ""
+        let last = lastName ?? ""
+        return "\(first) \(last)".trimmingCharacters(in: .whitespaces)
     }
 }

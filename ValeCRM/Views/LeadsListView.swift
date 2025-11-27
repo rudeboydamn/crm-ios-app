@@ -77,15 +77,19 @@ struct LeadRowView: View {
                 
                 Spacer()
                 
-                PriorityBadge(priority: lead.priority)
+                if let priority = lead.priority {
+                    PriorityBadge(priority: priority)
+                }
             }
             
-            Text(lead.propertyAddress)
+            Text(lead.propertyAddress ?? "No address")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
             HStack {
-                StatusBadge(status: lead.status)
+                if let status = lead.status {
+                    StatusBadge(status: status)
+                }
                 Spacer()
                 if let amount = lead.offerAmount {
                     Text("$\(amount, specifier: "%.0f")")
@@ -213,7 +217,7 @@ struct AddLeadView: View {
     
     private func saveLead() {
         let lead = Lead(
-            id: UUID(),
+            id: UUID().uuidString,
             createdAt: Date(),
             updatedAt: Date(),
             hubspotId: nil,
@@ -249,26 +253,26 @@ struct LeadDetailView: View {
             List {
                 Section(header: Text("Contact")) {
                     DetailRow(label: "Name", value: lead.fullName)
-                    DetailRow(label: "Email", value: lead.email)
-                    DetailRow(label: "Phone", value: lead.phone)
+                    DetailRow(label: "Email", value: lead.email ?? "--")
+                    DetailRow(label: "Phone", value: lead.phone ?? "--")
                 }
                 
                 Section(header: Text("Property")) {
-                    DetailRow(label: "Address", value: lead.propertyAddress)
-                    DetailRow(label: "City", value: lead.propertyCity)
-                    DetailRow(label: "State", value: lead.propertyState)
-                    DetailRow(label: "ZIP", value: lead.propertyZip)
+                    DetailRow(label: "Address", value: lead.propertyAddress ?? "--")
+                    DetailRow(label: "City", value: lead.propertyCity ?? "--")
+                    DetailRow(label: "State", value: lead.propertyState ?? "--")
+                    DetailRow(label: "ZIP", value: lead.propertyZip ?? "--")
                 }
                 
                 Section(header: Text("Details")) {
-                    DetailRow(label: "Source", value: lead.source.rawValue.capitalized)
-                    DetailRow(label: "Status", value: lead.status.rawValue.capitalized)
-                    DetailRow(label: "Priority", value: lead.priority.rawValue.capitalized)
+                    DetailRow(label: "Source", value: lead.source?.rawValue.capitalized ?? "--")
+                    DetailRow(label: "Status", value: lead.status?.rawValue.capitalized ?? "--")
+                    DetailRow(label: "Priority", value: lead.priority?.rawValue.capitalized ?? "--")
                 }
                 
                 if let askingPrice = lead.askingPrice {
                     Section(header: Text("Financial")) {
-                        DetailRow(label: "Asking Price", value: "$\(askingPrice, default: "%.0f")")
+                        DetailRow(label: "Asking Price", value: String(format: "$%.0f", askingPrice))
                     }
                 }
             }

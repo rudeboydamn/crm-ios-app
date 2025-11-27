@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Supabase
 
 final class DashboardViewModel: ObservableObject {
     @Published var metrics: ReportDashboardMetrics?
@@ -8,35 +7,38 @@ final class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastRefresh: Date?
     
-    private let supabase = SupabaseManager.shared
+    private let networkService = NetworkService.shared
     private var cancellables = Set<AnyCancellable>()
     
     init() {}
     
     func fetchMetrics() {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                // Fetch dashboard metrics via RPC
-                let query = try supabase.client
-                    .rpc("get_dashboard_metrics")
-                let response: PostgrestResponse<ReportDashboardMetrics> = try await query.execute()
-                let value = response.value
-                
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.fetchDashboardMetrics()
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] value in
+                    guard let self = self else { return }
+                    
                     self.metrics = value
                     self.lastRefresh = Date()
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func refresh() {

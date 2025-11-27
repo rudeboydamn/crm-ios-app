@@ -2,7 +2,7 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var authManager: AuthManager
-    @State private var email = ""
+    @State private var userId = ""
     @State private var password = ""
     @State private var showSignUp = false
     
@@ -29,11 +29,10 @@ struct LoginView: View {
                 
                 // Login Form
                 VStack(spacing: 15) {
-                    TextField("Email", text: $email)
+                    TextField("User ID", text: $userId)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .textContentType(.emailAddress)
+                        .textContentType(.username)
                         .autocapitalization(.none)
-                        .keyboardType(.emailAddress)
                     
                     SecureField("Password", text: $password)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -48,7 +47,7 @@ struct LoginView: View {
 
                     Button(action: {
                         _Concurrency.Task {
-                            await authManager.signIn(email: email, password: password)
+                            await authManager.signIn(userId: userId, password: password)
                         }
                     }) {
                         if authManager.isLoading {
@@ -65,7 +64,7 @@ struct LoginView: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
-                    .disabled(authManager.isLoading || email.isEmpty || password.isEmpty)
+                    .disabled(authManager.isLoading || userId.isEmpty || password.isEmpty)
                     
                     Button(action: {
                         _Concurrency.Task {

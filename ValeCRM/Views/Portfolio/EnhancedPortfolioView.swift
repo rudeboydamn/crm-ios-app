@@ -84,37 +84,41 @@ struct DashboardTabView: View {
                     VStack(spacing: 12) {
                         MetricRow(
                             title: "Total Rent Due",
-                            value: "$\(metrics.totalRentDue, default: "%.2f")",
+                            value: PortfolioFormatters.currency(metrics.totalRentDue),
                             icon: "dollarsign.circle.fill",
                             color: .blue
                         )
                         
                         MetricRow(
                             title: "Total Collected",
-                            value: "$\(metrics.totalRentCollected, default: "%.2f")",
+                            value: PortfolioFormatters.currency(metrics.totalRentCollected),
                             icon: "checkmark.circle.fill",
                             color: .green
                         )
                         
+                        let collectionRate = metrics.collectionRate ?? 0
                         MetricRow(
                             title: "Collection Rate",
-                            value: "\(metrics.collectionRate, default: "%.1f")%",
+                            value: PortfolioFormatters.percent(collectionRate),
                             icon: "chart.line.uptrend.xyaxis",
-                            color: metrics.collectionRate >= 90 ? .green : .orange
+                            color: collectionRate >= 90 ? .green : .orange
                         )
                         
                         Divider()
                         
+                        let occupancyRate = metrics.occupancyRate ?? 0
                         MetricRow(
                             title: "Occupancy Rate",
-                            value: "\(metrics.occupancyRate, default: "%.1f")%",
+                            value: PortfolioFormatters.percent(occupancyRate),
                             icon: "house.fill",
-                            color: metrics.occupancyRate >= 90 ? .green : .orange
+                            color: occupancyRate >= 90 ? .green : .orange
                         )
                         
+                        let occupiedUnits = metrics.occupiedUnits ?? 0
+                        let totalUnits = metrics.totalUnits ?? 0
                         MetricRow(
                             title: "Occupied Units",
-                            value: "\(metrics.occupiedUnits) / \(metrics.totalUnits)",
+                            value: "\(occupiedUnits) / \(totalUnits)",
                             icon: "person.3.fill",
                             color: .purple
                         )
@@ -123,30 +127,31 @@ struct DashboardTabView: View {
                         
                         MetricRow(
                             title: "Portfolio Value",
-                            value: "$\(metrics.totalPortfolioValue, default: "%.0f")",
+                            value: PortfolioFormatters.currency(metrics.totalPortfolioValue, decimals: 0),
                             icon: "building.2.fill",
                             color: .indigo
                         )
                         
                         MetricRow(
                             title: "Monthly Income",
-                            value: "$\(metrics.totalMonthlyIncome, default: "%.2f")",
+                            value: PortfolioFormatters.currency(metrics.totalMonthlyIncome),
                             icon: "arrow.up.circle.fill",
                             color: .green
                         )
                         
                         MetricRow(
                             title: "Monthly Expenses",
-                            value: "$\(metrics.totalMonthlyExpenses, default: "%.2f")",
+                            value: PortfolioFormatters.currency(metrics.totalMonthlyExpenses),
                             icon: "arrow.down.circle.fill",
                             color: .red
                         )
                         
+                        let netCashFlow = metrics.netMonthlyCashFlow ?? 0
                         MetricRow(
                             title: "Net Cash Flow",
-                            value: "$\(metrics.netMonthlyCashFlow, default: "%.2f")",
+                            value: PortfolioFormatters.currency(netCashFlow),
                             icon: "chart.bar.fill",
-                            color: metrics.netMonthlyCashFlow >= 0 ? .green : .red
+                            color: netCashFlow >= 0 ? .green : .red
                         )
                     }
                     .padding()
@@ -183,11 +188,11 @@ struct PropertyRow: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(property.address)
+            Text(property.address ?? "Unknown Address")
                 .font(.headline)
             
             HStack {
-                Text("\(property.city), \(property.state) \(property.zip)")
+                Text("\(property.city ?? ""), \(property.state ?? "") \(property.zip ?? "")")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -204,7 +209,7 @@ struct PropertyRow: View {
             }
             
             HStack {
-                if let value = property.currentValue {
+                if let value = property.marketValue {
                     Label("$\(value, specifier: "%.0f")", systemImage: "dollarsign.circle")
                         .font(.caption)
                         .foregroundColor(.green)
@@ -244,7 +249,7 @@ struct ResidentRow: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(resident.firstName) \(resident.lastName)")
+            Text(PortfolioFormatters.residentName(first: resident.firstName, last: resident.lastName))
                 .font(.headline)
             
             if let email = resident.email {
@@ -260,11 +265,13 @@ struct ResidentRow: View {
             }
             
             HStack {
-                Text(resident.status.capitalized)
+                let statusText = (resident.status ?? "Unknown").capitalized
+                let statusIsActive = resident.status?.lowercased() == "active"
+                Text(statusText)
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(resident.status == "active" ? Color.green.opacity(0.2) : Color.gray.opacity(0.2))
+                    .background(statusIsActive ? Color.green.opacity(0.2) : Color.gray.opacity(0.2))
                     .cornerRadius(8)
                 
                 if let moveInDate = resident.moveInDate {
@@ -310,36 +317,37 @@ struct PaymentRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Due: \(payment.dueDate.prefix(10))")
+                Text("Due: \(PortfolioFormatters.date(payment.dueDate))")
                     .font(.headline)
                 
                 Spacer()
                 
-                Text(payment.status.capitalized)
+                let statusRaw = payment.status?.lowercased() ?? "pending"
+                Text(statusRaw.capitalized)
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(payment.status == "paid" ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
+                    .background(statusRaw == "paid" ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
                     .cornerRadius(8)
             }
             
             HStack {
-                Text("Amount Due: $\(payment.amountDue, specifier: "%.2f")")
+                Text("Amount Due: \(PortfolioFormatters.currency(payment.amountDue))")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
                 if let paid = payment.amountPaid {
-                    Text("Paid: $\(paid, specifier: "%.2f")")
+                    Text("Paid: \(PortfolioFormatters.currency(paid))")
                         .font(.subheadline)
                         .foregroundColor(.green)
                 }
             }
             
-            if let paymentDate = payment.paymentDate, let method = payment.paymentMethod {
+            if payment.paymentDate != nil || payment.paymentMethod != nil {
                 HStack {
-                    Text("Paid on: \(paymentDate.prefix(10))")
+                    Text("Paid on: \(PortfolioFormatters.date(payment.paymentDate))")
                     Text("•")
-                    Text("Method: \(method)")
+                    Text("Method: \(payment.paymentMethod ?? "Unknown")")
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -371,5 +379,36 @@ struct MetricRow: View {
                 .font(.headline)
                 .foregroundColor(color)
         }
+    }
+}
+
+// MARK: - Formatting Helpers
+enum PortfolioFormatters {
+    static func currency(_ value: Double?, decimals: Int = 2) -> String {
+        guard let value = value else { return "$--" }
+        return String(format: "$%.\(decimals)f", value)
+    }
+    
+    static func currency(_ value: Double, decimals: Int = 2) -> String {
+        return String(format: "$%.\(decimals)f", value)
+    }
+    
+    static func percent(_ value: Double?, decimals: Int = 1) -> String {
+        guard let value = value else { return "--%" }
+        return String(format: "%.\(decimals)f%%", value)
+    }
+    
+    static func percent(_ value: Double, decimals: Int = 1) -> String {
+        return String(format: "%.\(decimals)f%%", value)
+    }
+    
+    static func date(_ isoString: String?) -> String {
+        guard let isoString = isoString else { return "--" }
+        return String(isoString.prefix(10))
+    }
+    
+    static func residentName(first: String?, last: String?) -> String {
+        let components = [first, last].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return components.isEmpty ? "Unknown Resident" : components.joined(separator: " ")
     }
 }

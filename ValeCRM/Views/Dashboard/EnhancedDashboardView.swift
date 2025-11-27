@@ -246,26 +246,27 @@ struct PerformanceSection: View {
             VStack(spacing: 12) {
                 PerformanceBar(
                     title: "Lead Conversion Rate",
-                    value: metrics.conversionRate,
+                    value: metrics.conversionRate ?? 0,
                     color: .green
                 )
                 
                 PerformanceBar(
                     title: "Rent Collection Rate",
-                    value: metrics.collectionRate,
+                    value: metrics.collectionRate ?? 0,
                     color: .blue
                 )
                 
                 PerformanceBar(
                     title: "Occupancy Rate",
-                    value: metrics.occupancyRate,
+                    value: metrics.occupancyRate ?? 0,
                     color: .purple
                 )
                 
-                if metrics.profitMargin > 0 {
+                let profitMargin = metrics.profitMargin ?? 0
+                if profitMargin > 0 {
                     PerformanceBar(
                         title: "Profit Margin",
-                        value: metrics.profitMargin,
+                        value: profitMargin,
                         color: .green
                     )
                 }
@@ -353,7 +354,7 @@ struct LeadRowCompact: View {
     var body: some View {
         HStack {
             Circle()
-                .fill(priorityColor(lead.priority))
+                .fill(priorityColor(lead.priority ?? .warm))
                 .frame(width: 8, height: 8)
             
             VStack(alignment: .leading, spacing: 2) {
@@ -361,14 +362,14 @@ struct LeadRowCompact: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                 
-                Text(lead.propertyAddress)
+                Text(lead.propertyAddress ?? "No address")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
             
-            Text(lead.status.rawValue.capitalized)
+            Text((lead.status?.rawValue ?? "new").capitalized)
                 .font(.caption)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)

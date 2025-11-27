@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Supabase
 
 final class ClientViewModel: ObservableObject {
     @Published var clients: [Client] = []
@@ -10,10 +9,8 @@ final class ClientViewModel: ObservableObject {
     @Published var selectedType: ClientType?
     @Published var selectedStatus: ClientStatus?
     
-    private let databaseService = ClientDatabaseService.shared
-    private let realtimeManager = RealtimeManager.shared
+    private let networkService = NetworkService.shared
     private var cancellables = Set<AnyCancellable>()
-    private var realtimeTask: _Concurrency.Task<Void, Never>?
     
     var filteredClients: [Client] {
         clients.filter { client in
@@ -37,131 +34,127 @@ final class ClientViewModel: ObservableObject {
         Array(clients.prefix(5))
     }
     
-    init() {
-        setupRealtimeSubscription()
-    }
-    
-    deinit {
-        realtimeTask?.cancel()
-    }
+    init() {}
     
     func fetchClients() {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let fetchedClients = try await databaseService.fetchAll()
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.fetchClients()
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] fetchedClients in
+                    guard let self = self else { return }
+                    
                     self.clients = fetchedClients
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func createClient(_ client: Client) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let createdClient = try await databaseService.create(client)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.createClient(client)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] createdClient in
+                    guard let self = self else { return }
+                    
                     if !self.clients.contains(where: { $0.id == createdClient.id }) {
                         self.clients.insert(createdClient, at: 0)
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func updateClient(_ client: Client) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let updatedClient = try await databaseService.update(client)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.updateClient(client)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] updatedClient in
+                    guard let self = self else { return }
+                    
                     if let index = self.clients.firstIndex(where: { $0.id == updatedClient.id }) {
                         self.clients[index] = updatedClient
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func deleteClient(_ client: Client) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                try await databaseService.delete(id: client.id)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.deleteClient(id: client.id)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] _ in
+                    guard let self = self else { return }
+                    
                     self.clients.removeAll { $0.id == client.id }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func clearFilters() {
         selectedType = nil
         selectedStatus = nil
         searchText = ""
-    }
-    
-    // MARK: - Real-time Subscriptions
-    
-    private func setupRealtimeSubscription() {
-        realtimeTask = _Concurrency.Task {
-            do {
-                try await realtimeManager.subscribeToAll(
-                    table: "clients",
-                    onInsert: { [weak self] (client: Client) in
-                        guard let self = self else { return }
-                        if !self.clients.contains(where: { $0.id == client.id }) {
-                            self.clients.insert(client, at: 0)
-                        }
-                    },
-                    onUpdate: { [weak self] (client: Client) in
-                        guard let self = self else { return }
-                        if let index = self.clients.firstIndex(where: { $0.id == client.id }) {
-                            self.clients[index] = client
-                        }
-                    },
-                    onDelete: { [weak self] (clientId: String) in
-                        guard let self = self else { return }
-                        self.clients.removeAll { $0.id == clientId }
-                    }
-                )
-            } catch {
-                print("Failed to setup realtime subscription: \(error)")
-            }
-        }
     }
 }

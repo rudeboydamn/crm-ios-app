@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Supabase
 
 final class PropertyViewModel: ObservableObject {
     @Published var properties: [Property] = []
@@ -10,16 +9,14 @@ final class PropertyViewModel: ObservableObject {
     @Published var selectedType: String?
     @Published var selectedStatus: String?
     
-    private let databaseService = PropertyDatabaseService.shared
-    private let realtimeManager = RealtimeManager.shared
+    private let networkService = NetworkService.shared
     private var cancellables = Set<AnyCancellable>()
-    private var realtimeTask: _Concurrency.Task<Void, Never>?
     
     var filteredProperties: [Property] {
         properties.filter { property in
             let matchesSearch = searchText.isEmpty ||
-                property.address.localizedCaseInsensitiveContains(searchText) ||
-                property.city.localizedCaseInsensitiveContains(searchText)
+                (property.address ?? "").localizedCaseInsensitiveContains(searchText) ||
+                (property.city ?? "").localizedCaseInsensitiveContains(searchText)
             
             let matchesType = selectedType == nil || property.propertyType == selectedType
             let matchesStatus = selectedStatus == nil || property.status == selectedStatus
@@ -29,15 +26,15 @@ final class PropertyViewModel: ObservableObject {
     }
     
     var totalPortfolioValue: Double {
-        properties.compactMap { $0.currentValue }.reduce(0, +)
+        properties.compactMap { $0.marketValue }.reduce(0, +)
     }
     
     var totalMonthlyIncome: Double {
-        properties.compactMap { $0.monthlyRent }.reduce(0, +)
+        0  // Would need to aggregate from units
     }
     
     var totalMonthlyExpenses: Double {
-        properties.compactMap { $0.monthlyExpenses }.reduce(0, +)
+        0  // Would need to aggregate from expenses
     }
     
     var netMonthlyCashFlow: Double {
@@ -58,131 +55,127 @@ final class PropertyViewModel: ObservableObject {
         properties.filter { $0.status != "for_sale" }
     }
     
-    init() {
-        setupRealtimeSubscription()
-    }
-    
-    deinit {
-        realtimeTask?.cancel()
-    }
+    init() {}
     
     func fetchProperties() {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let fetchedProperties = try await databaseService.fetchAll()
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.fetchProperties()
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] fetchedProperties in
+                    guard let self = self else { return }
+                    
                     self.properties = fetchedProperties
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func createProperty(_ property: Property) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let createdProperty = try await databaseService.create(property)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.createProperty(property)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] createdProperty in
+                    guard let self = self else { return }
+                    
                     if !self.properties.contains(where: { $0.id == createdProperty.id }) {
                         self.properties.append(createdProperty)
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func updateProperty(_ property: Property) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let updatedProperty = try await databaseService.update(property)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.updateProperty(property)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] updatedProperty in
+                    guard let self = self else { return }
+                    
                     if let index = self.properties.firstIndex(where: { $0.id == updatedProperty.id }) {
                         self.properties[index] = updatedProperty
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func deleteProperty(_ property: Property) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                try await databaseService.delete(id: property.id)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.deleteProperty(id: property.id)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] _ in
+                    guard let self = self else { return }
+                    
                     self.properties.removeAll { $0.id == property.id }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func clearFilters() {
         selectedType = nil
         selectedStatus = nil
         searchText = ""
-    }
-    
-    // MARK: - Real-time Subscriptions
-    
-    private func setupRealtimeSubscription() {
-        realtimeTask = _Concurrency.Task {
-            do {
-                try await realtimeManager.subscribeToAll(
-                    table: "properties",
-                    onInsert: { [weak self] (property: Property) in
-                        guard let self = self else { return }
-                        if !self.properties.contains(where: { $0.id == property.id }) {
-                            self.properties.append(property)
-                        }
-                    },
-                    onUpdate: { [weak self] (property: Property) in
-                        guard let self = self else { return }
-                        if let index = self.properties.firstIndex(where: { $0.id == property.id }) {
-                            self.properties[index] = property
-                        }
-                    },
-                    onDelete: { [weak self] (propertyId: String) in
-                        guard let self = self else { return }
-                        self.properties.removeAll { $0.id == propertyId }
-                    }
-                )
-            } catch {
-                print("Failed to setup realtime subscription: \(error)")
-            }
-        }
     }
 }

@@ -25,20 +25,16 @@ final class SupabaseManager {
         print("[SupabaseManager] SupabaseKey present: \(!supabaseKey.isEmpty)")
         print("[SupabaseManager] AppConfig.appVersion: '\(AppConfig.appVersion)'")
         
-        // Prepare options safely
-        let dbOptions = SupabaseClientOptions.DatabaseOptions(schema: "public")
-        let authOptions = SupabaseClientOptions.AuthOptions()
-        let options = SupabaseClientOptions(
-            db: dbOptions,
-            auth: authOptions
-        )
+        print("[SupabaseManager] Creating SupabaseClient with auth options (emitLocalSessionAsInitialSession = true)...")
         
-        print("[SupabaseManager] Options constructed. Creating SupabaseClient...")
+        let clientOptions = SupabaseClientOptions(
+            auth: .init(emitLocalSessionAsInitialSession: true)
+        )
         
         self.client = SupabaseClient(
             supabaseURL: supabaseURL,
             supabaseKey: supabaseKey,
-            options: options
+            options: clientOptions
         )
         
         print("[SupabaseManager] SupabaseClient initialized successfully.")

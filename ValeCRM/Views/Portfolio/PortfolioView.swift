@@ -130,18 +130,18 @@ struct PropertyRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(property.address)
+                Text(property.address ?? "Unknown Address")
                     .font(.headline)
                 Spacer()
                 PropertyStatusBadge(status: property.status)
             }
             
-            Text("\(property.city), \(property.state) \(property.zip)")
+            Text("\(property.city ?? ""), \(property.state ?? "") \(property.zip ?? "")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
             HStack {
-                if let value = property.currentValue {
+                if let value = property.marketValue {
                     VStack(alignment: .leading) {
                         Text("Value")
                             .font(.caption)
@@ -273,13 +273,16 @@ struct AddPropertyView: View {
             address: address,
             city: city,
             state: state,
-            zip: zip,
+            zipCode: zip,
             propertyType: propertyType,
             status: status,
             purchasePrice: Double(purchasePrice),
-            currentValue: Double(currentValue),
-            monthlyRent: Double(monthlyRent),
-            monthlyExpenses: Double(monthlyExpenses)
+            marketValue: Double(currentValue),
+            totalUnits: 1,
+            propertyTaxAnnual: nil,
+            insuranceAnnual: nil,
+            hoaMonthly: nil,
+            createdAt: nil
         )
         
         viewModel.createProperty(property)
@@ -296,14 +299,14 @@ struct PropertyDetailView: View {
         NavigationView {
             List {
                 Section(header: Text("Location")) {
-                    DetailRow(label: "Address", value: property.address)
-                    DetailRow(label: "City", value: property.city)
-                    DetailRow(label: "State", value: property.state)
-                    DetailRow(label: "ZIP", value: property.zip)
+                    DetailRow(label: "Address", value: property.address ?? "--")
+                    DetailRow(label: "City", value: property.city ?? "--")
+                    DetailRow(label: "State", value: property.state ?? "--")
+                    DetailRow(label: "ZIP", value: property.zip ?? "--")
                 }
                 
                 Section(header: Text("Property Details")) {
-                    DetailRow(label: "Type", value: property.propertyType.replacingOccurrences(of: "_", with: " ").capitalized)
+                    DetailRow(label: "Type", value: (property.propertyType ?? "").replacingOccurrences(of: "_", with: " ").capitalized)
                     HStack {
                         Text("Status")
                             .foregroundColor(.secondary)
@@ -314,23 +317,17 @@ struct PropertyDetailView: View {
                 
                 Section(header: Text("Financial")) {
                     if let purchase = property.purchasePrice {
-                        DetailRow(label: "Purchase Price", value: "$\(purchase, default: "%.0f")")
+                        DetailRow(label: "Purchase Price", value: String(format: "$%.0f", purchase))
                     }
-                    if let value = property.currentValue {
-                        DetailRow(label: "Current Value", value: "$\(value, default: "%.0f")")
-                    }
-                    if let rent = property.monthlyRent {
-                        DetailRow(label: "Monthly Rent", value: "$\(rent, default: "%.0f")")
-                    }
-                    if let expenses = property.monthlyExpenses {
-                        DetailRow(label: "Monthly Expenses", value: "$\(expenses, default: "%.0f")")
+                    if let value = property.marketValue {
+                        DetailRow(label: "Market Value", value: String(format: "$%.0f", value))
                     }
                 }
                 
                 Section(header: Text("Metrics")) {
-                    DetailRow(label: "Monthly Cash Flow", value: "$\(property.monthlyCashFlow, default: "%.0f")")
-                    DetailRow(label: "Annual Cash Flow", value: "$\(property.annualCashFlow, default: "%.0f")")
-                    DetailRow(label: "ROI", value: "\(property.roi, default: "%.2f")%")
+                    DetailRow(label: "Monthly Cash Flow", value: String(format: "$%.0f", property.monthlyCashFlow))
+                    DetailRow(label: "Annual Cash Flow", value: String(format: "$%.0f", property.annualCashFlow))
+                    DetailRow(label: "ROI", value: String(format: "%.2f%%", property.roi))
                 }
             }
             .navigationTitle("Property Details")

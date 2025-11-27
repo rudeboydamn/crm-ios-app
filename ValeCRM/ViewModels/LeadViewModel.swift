@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Supabase
 
 final class LeadViewModel: ObservableObject {
     @Published var leads: [Lead] = []
@@ -11,18 +10,16 @@ final class LeadViewModel: ObservableObject {
     @Published var selectedStatus: LeadStatus?
     @Published var selectedPriority: LeadPriority?
     
-    private let databaseService = LeadDatabaseService.shared
-    private let realtimeManager = RealtimeManager.shared
+    private let networkService = NetworkService.shared
     private let hubspotService = HubSpotService.shared
     private var cancellables = Set<AnyCancellable>()
-    private var realtimeTask: _Concurrency.Task<Void, Never>?
     
     var filteredLeads: [Lead] {
         leads.filter { lead in
             let matchesSearch = searchText.isEmpty ||
                 lead.fullName.localizedCaseInsensitiveContains(searchText) ||
-                lead.email.localizedCaseInsensitiveContains(searchText) ||
-                lead.propertyAddress.localizedCaseInsensitiveContains(searchText)
+                (lead.email ?? "").localizedCaseInsensitiveContains(searchText) ||
+                (lead.propertyAddress ?? "").localizedCaseInsensitiveContains(searchText)
             
             let matchesSource = selectedSource == nil || lead.source == selectedSource
             let matchesStatus = selectedStatus == nil || lead.status == selectedStatus
@@ -40,108 +37,142 @@ final class LeadViewModel: ObservableObject {
         Array(leads.prefix(5))
     }
     
-    init() {
-        setupRealtimeSubscription()
-    }
-    
-    deinit {
-        realtimeTask?.cancel()
-    }
+    init() {}
     
     func fetchLeads() {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let fetchedLeads = try await databaseService.fetchAll()
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.fetchLeads()
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] fetchedLeads in
+                    guard let self = self else { return }
+                    
                     self.leads = fetchedLeads
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func createLead(_ lead: Lead) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let createdLead = try await databaseService.create(lead)
-                
-                // Optionally sync to HubSpot
-                _ = try? await syncToHubSpot(createdLead)
-                
-                await MainActor.run {
-                    // Real-time will handle the insert, but add optimistically
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.createLead(lead)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] createdLead in
+                    guard let self = self else { return }
+                    
                     if !self.leads.contains(where: { $0.id == createdLead.id }) {
                         self.leads.insert(createdLead, at: 0)
                     }
                     self.isLoading = false
                     self.errorMessage = nil
+                    
+                    _Concurrency.Task {
+                        await MainActor.run {
+                            self.isLoading = true
+                        }
+                        _ = try? await self.syncToHubSpot(createdLead)
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                    }
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func updateLead(_ lead: Lead) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let updatedLead = try await databaseService.update(lead)
-                
-                // Optionally sync to HubSpot
-                _ = try? await syncToHubSpot(updatedLead)
-                
-                await MainActor.run {
-                    // Real-time will handle the update, but update optimistically
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.updateLead(lead)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] updatedLead in
+                    guard let self = self else { return }
+                    
                     if let index = self.leads.firstIndex(where: { $0.id == updatedLead.id }) {
                         self.leads[index] = updatedLead
                     }
                     self.isLoading = false
                     self.errorMessage = nil
+                    
+                    _Concurrency.Task {
+                        await MainActor.run {
+                            self.isLoading = true
+                        }
+                        _ = try? await self.syncToHubSpot(updatedLead)
+                        await MainActor.run {
+                            self.isLoading = false
+                        }
+                    }
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func deleteLead(_ lead: Lead) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                try await databaseService.delete(id: lead.id)
-                
-                await MainActor.run {
-                    // Real-time will handle the delete, but remove optimistically
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.deleteLead(id: lead.id)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] _ in
+                    guard let self = self else { return }
+                    
                     self.leads.removeAll { $0.id == lead.id }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func clearFilters() {
@@ -149,38 +180,6 @@ final class LeadViewModel: ObservableObject {
         selectedStatus = nil
         selectedPriority = nil
         searchText = ""
-    }
-    
-    // MARK: - Real-time Subscriptions
-    
-    private func setupRealtimeSubscription() {
-        realtimeTask = _Concurrency.Task {
-            do {
-                try await realtimeManager.subscribeToAll(
-                    table: "leads",
-                    onInsert: { [weak self] (lead: Lead) in
-                        guard let self = self else { return }
-                        if !self.leads.contains(where: { $0.id == lead.id }) {
-                            self.leads.insert(lead, at: 0)
-                        }
-                    },
-                    onUpdate: { [weak self] (lead: Lead) in
-                        guard let self = self else { return }
-                        if let index = self.leads.firstIndex(where: { $0.id == lead.id }) {
-                            self.leads[index] = lead
-                        }
-                    },
-                    onDelete: { [weak self] (leadId: String) in
-                        guard let self = self else { return }
-                        if let uuid = UUID(uuidString: leadId) {
-                            self.leads.removeAll { $0.id == uuid }
-                        }
-                    }
-                )
-            } catch {
-                print("Failed to setup realtime subscription: \(error)")
-            }
-        }
     }
     
     // MARK: - Helper Methods
@@ -202,29 +201,14 @@ final class LeadViewModel: ObservableObject {
         }
     }
     
-    /// Search leads using database query
+    /// Search leads using local filtering over fetched leads
     func searchLeads(query: String) {
-        guard !query.isEmpty else {
-            fetchLeads()
-            return
-        }
+        searchText = query
         
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let results = try await databaseService.search(query: query)
-                await MainActor.run {
-                    self.leads = results
-                    self.isLoading = false
-                    self.errorMessage = nil
-                }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
+        if query.isEmpty {
+            fetchLeads()
+        } else if leads.isEmpty {
+            fetchLeads()
         }
     }
 }

@@ -18,42 +18,31 @@ enum PropertyStatus: String, Codable, CaseIterable {
 }
 
 struct Property: Identifiable, Codable {
-    let id: String  // Changed from UUID to String for API compatibility
-    var address: String
-    var city: String
-    var state: String
-    var zip: String
-    var propertyType: String  // Changed to String for flexibility
-    var status: String?  // Changed to optional String
+    let id: String
+    var address: String?
+    var city: String?
+    var state: String?
+    var zipCode: String?  // Matches database zip_code -> zipCode
+    var propertyType: String?
+    var status: String?
     var purchasePrice: Double?
-    var currentValue: Double?
-    var monthlyRent: Double?
-    var monthlyExpenses: Double?
+    var marketValue: Double?  // Matches database market_value
     var totalUnits: Int?
     var propertyTaxAnnual: Double?
     var insuranceAnnual: Double?
     var hoaMonthly: Double?
-    var purchaseDate: String?
+    var createdAt: String?
+    
+    // Computed properties for convenience
+    var zip: String? { zipCode }
+    var currentValue: Double? { marketValue }
+    var monthlyRent: Double? { nil }  // Would come from units
+    var monthlyExpenses: Double? { nil }  // Would come from expenses
 
     var monthlyCashFlow: Double { (monthlyRent ?? 0) - (monthlyExpenses ?? 0) }
     var annualCashFlow: Double { monthlyCashFlow * 12 }
     var roi: Double {
         guard let purchase = purchasePrice, purchase > 0 else { return 0 }
         return (annualCashFlow / purchase) * 100
-    }
-    
-    enum CodingKeys: String, CodingKey {
-        case id, address, city, state, status
-        case zip = "zipCode"
-        case propertyType
-        case purchasePrice
-        case currentValue = "marketValue"
-        case monthlyRent
-        case monthlyExpenses
-        case totalUnits
-        case propertyTaxAnnual
-        case insuranceAnnual
-        case hoaMonthly
-        case purchaseDate
     }
 }

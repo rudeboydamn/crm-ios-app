@@ -82,8 +82,62 @@ final class AuthManager: ObservableObject {
     
     // MARK: - Authentication Methods
     
-    /// Sign in with email and password
-    func signIn(email: String, password: String) async {
+    private let networkService = NetworkService.shared
+    
+    /// Sign in with userId and password via the website API
+    /// This is the primary login method that authenticates against keystonevale.org
+    func signIn(userId: String, password: String) async {
+        await MainActor.run {
+            self.isLoading = true
+            self.errorMessage = nil
+        }
+        
+        // Login via website API to get JWT token for CRM access
+        networkService.login(userId: userId, password: password)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] response in
+                    guard let self = self else { return }
+                    
+                    // Store JWT token for API calls
+                    self.networkService.setAuthToken(response.data.token)
+                    
+                    // Create user from response
+                    let user = User(
+                        id: response.data.user.id,
+                        userId: response.data.user.userId,
+                        email: response.data.user.email,
+                        name: response.data.user.name,
+                        role: response.data.user.role,
+                        isActive: true,
+                        createdAt: nil,
+                        lastLogin: Date()
+                    )
+                    
+                    self.currentUser = user
+                    self.isAuthenticated = true
+                    self.isLoading = false
+                    
+                    // Store token in keychain for persistence
+                    self.storeToken(response.data.token)
+                }
+            )
+            .store(in: &cancellables)
+    }
+    
+    /// Sign in with email and password (legacy Supabase method)
+    func signInWithEmail(email: String, password: String) async {
         isLoading = true
         errorMessage = nil
         
@@ -107,6 +161,18 @@ final class AuthManager: ObservableObject {
                 self.isLoading = false
             }
         }
+    }
+    
+    private func storeToken(_ token: String) {
+        UserDefaults.standard.set(token, forKey: "crm_jwt_token")
+    }
+    
+    private func loadStoredToken() -> String? {
+        return UserDefaults.standard.string(forKey: "crm_jwt_token")
+    }
+    
+    private func clearStoredToken() {
+        UserDefaults.standard.removeObject(forKey: "crm_jwt_token")
     }
     
     /// Sign up new user
@@ -156,17 +222,20 @@ final class AuthManager: ObservableObject {
     
     /// Sign out current user
     func signOut() async {
+        // Clear JWT token
+        networkService.setAuthToken(nil)
+        clearStoredToken()
+        
+        // Also sign out from Supabase if there's a session
         do {
             try await supabase.auth.signOut()
-            
-            await MainActor.run {
-                self.isAuthenticated = false
-                self.currentUser = nil
-            }
         } catch {
-            await MainActor.run {
-                self.errorMessage = SupabaseError.map(error).localizedDescription
-            }
+            // Ignore Supabase signout errors
+        }
+        
+        await MainActor.run {
+            self.isAuthenticated = false
+            self.currentUser = nil
         }
     }
     
@@ -233,14 +302,26 @@ final class AuthManager: ObservableObject {
     /// Check initial auth status on app launch
     private func checkInitialAuthStatus() {
         _Concurrency.Task {
+            // First, try to restore JWT token from storage
+            if let storedToken = self.loadStoredToken() {
+                self.networkService.setAuthToken(storedToken)
+                // For now, assume token is valid - the API will return 401 if not
+                await MainActor.run {
+                    self.isAuthenticated = true
+                }
+                return
+            }
+            
+            // Fallback: check Supabase session
             do {
                 let session = try await supabase.auth.session
+                let isValid = session.accessToken.isEmpty == false && (session.isExpired == false)
                 
                 await MainActor.run {
-                    self.isAuthenticated = session.accessToken.isEmpty == false
+                    self.isAuthenticated = isValid
                 }
                 
-                if isAuthenticated {
+                if isValid {
                     await fetchUserProfile(userId: session.user.id.uuidString)
                 }
             } catch {
@@ -269,7 +350,7 @@ final class AuthManager: ObservableObject {
         }
     }
     
-    /// Get current session
+    /// Get current session (may be expired)
     func getCurrentSession() async throws -> Session {
         return try await supabase.auth.session
     }

@@ -2,10 +2,10 @@
 
 #include? "ConfigSecrets.xcconfig"
 
-API_BASE_URL = https://keystonevale.org
+API_BASE_URL = https:/$()/keystonevale.org
 APP_NAME = ValeCRM
 APP_VERSION = 1.0
 COMPANY_NAME = Keystone Vale
 SUPPORT_EMAIL = dammy@keystonevale.org
-WEBSITE_URL = https://keystonevale.org
+WEBSITE_URL = https:/$()/keystonevale.org
 PHONE_NUMBER = (717) 436-3880

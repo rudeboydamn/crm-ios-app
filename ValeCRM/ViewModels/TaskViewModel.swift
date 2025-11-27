@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import Supabase
 
 final class TaskViewModel: ObservableObject {
     @Published var tasks: [Task] = []
@@ -12,10 +11,8 @@ final class TaskViewModel: ObservableObject {
     @Published var showOnlyOverdue = false
     @Published var showOnlyDueToday = false
     
-    private let databaseService = TaskDatabaseService.shared
-    private let realtimeManager = RealtimeManager.shared
+    private let networkService = NetworkService.shared
     private var cancellables = Set<AnyCancellable>()
-    private var realtimeTask: _Concurrency.Task<Void, Never>?
     
     var filteredTasks: [Task] {
         tasks.filter { task in
@@ -48,96 +45,122 @@ final class TaskViewModel: ObservableObject {
         tasks.filter { $0.status == .completed }
     }
     
-    init() {
-        setupRealtimeSubscription()
-    }
-    
-    deinit {
-        realtimeTask?.cancel()
-    }
+    init() {}
     
     func fetchTasks() {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let fetchedTasks = try await databaseService.fetchAll()
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.fetchTasks()
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] fetchedTasks in
+                    guard let self = self else { return }
+                    
                     self.tasks = fetchedTasks
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func createTask(_ task: Task) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let createdTask = try await databaseService.create(task)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.createTask(task)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] createdTask in
+                    guard let self = self else { return }
+                    
                     if !self.tasks.contains(where: { $0.id == createdTask.id }) {
                         self.tasks.insert(createdTask, at: 0)
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func updateTask(_ task: Task) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                let updatedTask = try await databaseService.update(task)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.updateTask(task)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] updatedTask in
+                    guard let self = self else { return }
+                    
                     if let index = self.tasks.firstIndex(where: { $0.id == updatedTask.id }) {
                         self.tasks[index] = updatedTask
                     }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func deleteTask(_ task: Task) {
-        _Concurrency.Task {
-            await MainActor.run { self.isLoading = true }
-            
-            do {
-                try await databaseService.delete(id: task.id)
-                await MainActor.run {
+        isLoading = true
+        errorMessage = nil
+        
+        networkService.deleteTask(id: task.id)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    
+                    switch completion {
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.isLoading = false
+                    case .finished:
+                        break
+                    }
+                },
+                receiveValue: { [weak self] _ in
+                    guard let self = self else { return }
+                    
                     self.tasks.removeAll { $0.id == task.id }
                     self.isLoading = false
                     self.errorMessage = nil
                 }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = SupabaseError.map(error).localizedDescription
-                    self.isLoading = false
-                }
-            }
-        }
+            )
+            .store(in: &cancellables)
     }
     
     func markAsCompleted(_ task: Task) {
@@ -153,35 +176,5 @@ final class TaskViewModel: ObservableObject {
         showOnlyOverdue = false
         showOnlyDueToday = false
         searchText = ""
-    }
-    
-    // MARK: - Real-time Subscriptions
-    
-    private func setupRealtimeSubscription() {
-        realtimeTask = _Concurrency.Task {
-            do {
-                try await realtimeManager.subscribeToAll(
-                    table: "tasks",
-                    onInsert: { [weak self] (task: Task) in
-                        guard let self = self else { return }
-                        if !self.tasks.contains(where: { $0.id == task.id }) {
-                            self.tasks.insert(task, at: 0)
-                        }
-                    },
-                    onUpdate: { [weak self] (task: Task) in
-                        guard let self = self else { return }
-                        if let index = self.tasks.firstIndex(where: { $0.id == task.id }) {
-                            self.tasks[index] = task
-                        }
-                    },
-                    onDelete: { [weak self] (taskId: String) in
-                        guard let self = self else { return }
-                        self.tasks.removeAll { $0.id == taskId }
-                    }
-                )
-            } catch {
-                print("Failed to setup realtime subscription: \(error)")
-            }
-        }
     }
 }

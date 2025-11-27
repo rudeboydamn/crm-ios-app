@@ -2,53 +2,10 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthManager
-    @StateObject private var leadViewModel: LeadViewModel
-    @StateObject private var portfolioViewModel: PortfolioViewModel
-    @StateObject private var projectViewModel: RehabProjectViewModel
-    
-    init() {
-        _leadViewModel = StateObject(wrappedValue: LeadViewModel())
-        _portfolioViewModel = StateObject(wrappedValue: PortfolioViewModel())
-        _projectViewModel = StateObject(wrappedValue: RehabProjectViewModel())
-    }
     
     var body: some View {
-        Group {
-            if authManager.isAuthenticated {
-                TabView {
-                    EnhancedDashboardView()
-                        .tabItem {
-                            Label("Dashboard", systemImage: "chart.bar.fill")
-                        }
-                    
-                    ProjectsListView()
-                        .environmentObject(projectViewModel)
-                        .tabItem {
-                            Label("Projects", systemImage: "hammer.fill")
-                        }
-                    
-                    EnhancedPortfolioView()
-                        .environmentObject(portfolioViewModel)
-                        .tabItem {
-                            Label("Portfolio", systemImage: "building.2.fill")
-                        }
-                    
-                    TasksListView()
-                        .tabItem {
-                            Label("Tasks", systemImage: "checkmark.circle.fill")
-                        }
-                    
-                    MoreView()
-                        .environmentObject(authManager)
-                        .tabItem {
-                            Label("More", systemImage: "ellipsis.circle.fill")
-                        }
-                }
-                .accentColor(.blue)
-            } else {
-                LoginView()
-            }
-        }
+        MainTabView()
+            .environmentObject(authManager)
     }
 }
 
@@ -119,13 +76,14 @@ struct DashboardCard: View {
 // More View with additional features and settings
 struct MoreView: View {
     @EnvironmentObject var authManager: AuthManager
+    @EnvironmentObject var leadViewModel: LeadViewModel
     
     var body: some View {
         if #available(iOS 16.0, *) {
             NavigationStack {
                 List {
                     Section("Sales & Operations") {
-                        NavigationLink(destination: LeadsListView()) {
+                        NavigationLink(destination: LeadsListView().environmentObject(leadViewModel)) {
                             Label("Leads", systemImage: "person.2.fill")
                         }
                         

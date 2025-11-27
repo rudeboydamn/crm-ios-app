@@ -115,46 +115,47 @@ struct RehabProject: Identifiable, Codable {
     }()
     
     enum CodingKeys: String, CodingKey {
-        case id, status
-        case propertyAddress
-        case propertyName
-        case purchaseDate
-        case sellDate
-        case measuredSqft
-        case rehabType
-        case propertyPurchase
-        case homeInspection
+        case id
+        case status
+        case propertyAddress = "property_address"
+        case propertyName = "property_name"
+        case purchaseDate = "purchase_date"
+        case sellDate = "sell_date"
+        case measuredSqft = "measured_sqft"
+        case rehabType = "rehab_type"
+        case propertyPurchase = "property_purchase"
+        case homeInspection = "home_inspection"
         case appraisal
         case survey
-        case lenderFees
-        case purchaseClosingCosts
-        case purchaseOther
-        case totalContractor
-        case totalMaterials
-        case mortgageInterest
-        case investorMortgageInterest
-        case propertyTaxes
+        case lenderFees = "lender_fees"
+        case purchaseClosingCosts = "purchase_closing_costs"
+        case purchaseOther = "purchase_other"
+        case totalContractor = "total_contractor"
+        case totalMaterials = "total_materials"
+        case mortgageInterest = "mortgage_interest"
+        case investorMortgageInterest = "investor_mortgage_interest"
+        case propertyTaxes = "property_taxes"
         case insurance
-        case totalUtilities
-        case lawnCare
-        case holdingOther
-        case salesRevenue
-        case brokerCommissionPercent
-        case homeWarranty
-        case buyerTermite
-        case closingCostsBuyer
-        case sellingClosingCosts
-        case bankServiceCharges
-        case quickbooksPropertyName
-        case totalPurchaseCosts
-        case totalRehabCosts
-        case totalHoldingCosts
-        case totalSellingCosts
-        case totalExpenses
-        case netIncome
-        case totalInvestment
+        case totalUtilities = "total_utilities"
+        case lawnCare = "lawn_care"
+        case holdingOther = "holding_other"
+        case salesRevenue = "sales_revenue"
+        case brokerCommissionPercent = "broker_commission_percent"
+        case homeWarranty = "home_warranty"
+        case buyerTermite = "buyer_termite"
+        case closingCostsBuyer = "closing_costs_buyer"
+        case sellingClosingCosts = "selling_closing_costs"
+        case bankServiceCharges = "bank_service_charges"
+        case quickbooksPropertyName = "quickbooks_property_name"
+        case totalPurchaseCosts = "total_purchase_costs"
+        case totalRehabCosts = "total_rehab_costs"
+        case totalHoldingCosts = "total_holding_costs"
+        case totalSellingCosts = "total_selling_costs"
+        case totalExpenses = "total_expenses"
+        case netIncome = "net_income"
+        case totalInvestment = "total_investment"
         case roi
-        case createdAt
-        case updatedAt
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
     }
 }

@@ -191,34 +191,7 @@ struct PortfolioDashboardView: View {
     }
 }
 
-// MARK: - Metric Card
-struct MetricCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                Spacer()
-            }
-            
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-    }
-}
+// MetricCard moved to Views/Shared/SharedComponents.swift
 
 // MARK: - Financial Row
 struct FinancialRow: View {
@@ -350,32 +323,7 @@ struct PropertyRowFull: View {
     }
 }
 
-// MARK: - Status Pill
-struct StatusPill: View {
-    let status: String
-    
-    var body: some View {
-        Text(status.replacingOccurrences(of: "_", with: " ").capitalized)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(statusColor.opacity(0.2))
-            .foregroundColor(statusColor)
-            .cornerRadius(8)
-    }
-    
-    private var statusColor: Color {
-        switch status.lowercased() {
-        case "owned", "active": return .green
-        case "for_sale", "for sale": return .orange
-        case "under_contract", "under contract": return .blue
-        case "rehabbing": return .purple
-        case "rental": return .cyan
-        default: return .gray
-        }
-    }
-}
+// StatusPill moved to Views/Shared/SharedComponents.swift
 
 // MARK: - Residents List View
 struct ResidentsListView: View {
@@ -504,12 +452,13 @@ struct PaymentsListView: View {
             }
         }
         .toolbar {
-            if !showPastOnly {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingAddPayment = true }) {
-                        Image(systemName: "plus")
-                    }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: { showingAddPayment = true }) {
+                    Image(systemName: "plus")
                 }
+                .opacity(showPastOnly ? 0 : 1)
+                .disabled(showPastOnly)
+                .accessibilityHidden(showPastOnly)
             }
         }
         .sheet(isPresented: $showingAddPayment) {
@@ -592,58 +541,7 @@ struct PastPropertiesListView: View {
     }
 }
 
-// MARK: - Search Bar
-struct SearchBar: View {
-    @Binding var text: String
-    var placeholder: String = "Search..."
-    
-    var body: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-            
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-            
-            if !text.isEmpty {
-                Button(action: { text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-        .padding(10)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Empty State View
-struct EmptyStateView: View {
-    let icon: String
-    let title: String
-    let message: String
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
-            
-            Text(title)
-                .font(.headline)
-            
-            Text(message)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-    }
-}
+// SearchBar moved to Views/Shared/SharedComponents.swift
 
 // MARK: - Add Property Sheet
 struct AddPropertySheet: View {
@@ -752,7 +650,7 @@ struct AddResidentSheet: View {
                     TextField("Last Name", text: $lastName)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                 }
@@ -897,21 +795,7 @@ struct PropertyDetailViewFull: View {
     }
 }
 
-// MARK: - Detail Row View
-struct DetailRowView: View {
-    let label: String
-    let value: String
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .fontWeight(.medium)
-        }
-    }
-}
+// DetailRowView moved to Views/Shared/SharedComponents.swift
 
 // MARK: - Resident Detail View
 struct ResidentDetailView: View {

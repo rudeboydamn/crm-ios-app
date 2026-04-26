@@ -199,7 +199,7 @@ struct PropertyStatusBadge: View {
 
 struct AddPropertyView: View {
     @EnvironmentObject var viewModel: PropertyViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var address = ""
     @State private var city = ""
@@ -253,7 +253,7 @@ struct AddPropertyView: View {
             .navigationTitle("New Property")
             .navigationBarItems(
                 leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 },
                 trailing: Button("Save") {
                     saveProperty()
@@ -286,14 +286,14 @@ struct AddPropertyView: View {
         )
         
         viewModel.createProperty(property)
-        presentationMode.wrappedValue.dismiss()
+        dismiss()
     }
 }
 
 struct PropertyDetailView: View {
     let property: Property
     @EnvironmentObject var viewModel: PropertyViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationView {
@@ -332,7 +332,7 @@ struct PropertyDetailView: View {
             }
             .navigationTitle("Property Details")
             .navigationBarItems(trailing: Button("Done") {
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             })
         }
     }

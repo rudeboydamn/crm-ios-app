@@ -78,7 +78,7 @@ struct LeadRowView: View {
                 Spacer()
                 
                 if let priority = lead.priority {
-                    PriorityBadge(priority: priority)
+                    LeadPriorityBadge(priority: priority)
                 }
             }
             
@@ -88,7 +88,7 @@ struct LeadRowView: View {
             
             HStack {
                 if let status = lead.status {
-                    StatusBadge(status: status)
+                    LeadStatusBadgeLegacy(status: status)
                 }
                 Spacer()
                 if let amount = lead.offerAmount {
@@ -102,7 +102,7 @@ struct LeadRowView: View {
     }
 }
 
-struct PriorityBadge: View {
+struct LeadPriorityBadge: View {
     let priority: LeadPriority
     
     var body: some View {
@@ -125,7 +125,7 @@ struct PriorityBadge: View {
     }
 }
 
-struct StatusBadge: View {
+struct LeadStatusBadgeLegacy: View {
     let status: LeadStatus
     
     var body: some View {
@@ -140,7 +140,7 @@ struct StatusBadge: View {
 
 struct AddLeadView: View {
     @EnvironmentObject var viewModel: LeadViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var firstName = ""
     @State private var lastName = ""
@@ -163,7 +163,7 @@ struct AddLeadView: View {
                     TextField("Last Name", text: $lastName)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                 }
@@ -173,7 +173,7 @@ struct AddLeadView: View {
                     TextField("City", text: $propertyCity)
                     TextField("State", text: $propertyState)
                     TextField("ZIP Code", text: $propertyZip)
-                        .keyboardType(.numberPad)
+                        .keyboardType(.decimalPad)
                     TextField("Asking Price (optional)", text: $askingPrice)
                         .keyboardType(.decimalPad)
                 }
@@ -201,7 +201,7 @@ struct AddLeadView: View {
             .navigationTitle("New Lead")
             .navigationBarItems(
                 leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 },
                 trailing: Button("Save") {
                     saveLead()
@@ -239,14 +239,14 @@ struct AddLeadView: View {
         )
         
         viewModel.createLead(lead)
-        presentationMode.wrappedValue.dismiss()
+        dismiss()
     }
 }
 
 struct LeadDetailView: View {
     let lead: Lead
     @EnvironmentObject var viewModel: LeadViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationView {
@@ -278,7 +278,7 @@ struct LeadDetailView: View {
             }
             .navigationTitle("Lead Details")
             .navigationBarItems(trailing: Button("Done") {
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             })
         }
     }

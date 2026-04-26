@@ -74,8 +74,12 @@ struct SettingsView: View {
     }
     
     private func signOut() {
-        authManager.signOut()
-        dismiss()
+        _Concurrency.Task {
+            await authManager.signOut()
+            await MainActor.run {
+                dismiss()
+            }
+        }
     }
 }
 
@@ -93,7 +97,7 @@ struct ProfileSettingsView: View {
                 TextField("Name", text: $name)
                 TextField("Email", text: $email)
                     .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
+                    .textInputAutocapitalization(.never)
                 TextField("Phone", text: $phone)
                     .keyboardType(.phonePad)
             }
@@ -374,7 +378,7 @@ struct AddUserSheet: View {
                     TextField("Name", text: $name)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                 }
                 
                 Section("Role") {
@@ -775,5 +779,5 @@ struct AboutView: View {
 
 #Preview {
     SettingsView()
-        .environmentObject(AuthManager(networkService: NetworkService.shared))
+        .environmentObject(AuthManager())
 }

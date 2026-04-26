@@ -268,7 +268,7 @@ struct AddClientView: View {
                 Section("Contact") {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                 }

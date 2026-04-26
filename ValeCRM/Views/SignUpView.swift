@@ -42,12 +42,12 @@ struct SignUpView: View {
                         TextField("Username", text: $userId)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .textContentType(.username)
-                            .autocapitalization(.none)
+                            .textInputAutocapitalization(.never)
                         
                         TextField("Email", text: $email)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .textContentType(.emailAddress)
-                            .autocapitalization(.none)
+                            .textInputAutocapitalization(.never)
                             .keyboardType(.emailAddress)
                         
                         SecureField("Password", text: $password)

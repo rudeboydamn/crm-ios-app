@@ -79,6 +79,10 @@ struct CRMTask: Identifiable, Codable {
     // Additional
     var tags: [String]
     var notes: String?
+
+    var isCompleted: Bool {
+        status == .completed
+    }
     
     var isOverdue: Bool {
         guard let dueDate = dueDate else { return false }

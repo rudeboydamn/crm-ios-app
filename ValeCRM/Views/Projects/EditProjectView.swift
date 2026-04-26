@@ -3,7 +3,7 @@ import SwiftUI
 struct EditProjectView: View {
     let project: RehabProject
     @EnvironmentObject var viewModel: RehabProjectViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var propertyName: String
     @State private var propertyAddress: String
@@ -47,7 +47,7 @@ struct EditProjectView: View {
         self.project = project
         _propertyName = State(initialValue: project.propertyName)
         _propertyAddress = State(initialValue: project.propertyAddress)
-        _status = State(initialValue: project.status)
+        _status = State(initialValue: project.status.rawValue)
         _measuredSqft = State(initialValue: project.measuredSqft != nil ? "\(project.measuredSqft!)" : "")
         _rehabType = State(initialValue: project.rehabType ?? "")
         _purchaseDate = State(initialValue: project.startDate ?? Date())
@@ -152,7 +152,7 @@ struct EditProjectView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 },
                 trailing: Button("Save") {
                     saveProject()
@@ -165,7 +165,7 @@ struct EditProjectView: View {
         var updatedProject = project
         updatedProject.propertyName = propertyName
         updatedProject.propertyAddress = propertyAddress
-        updatedProject.status = status
+        updatedProject.status = ProjectStatus(rawValue: status) ?? .planning
         updatedProject.measuredSqft = Double(measuredSqft)
         updatedProject.rehabType = rehabType.isEmpty ? nil : rehabType
         updatedProject.purchaseDate = isoFormatter.string(from: purchaseDate)
@@ -198,7 +198,7 @@ struct EditProjectView: View {
         updatedProject.sellingClosingCosts = Double(sellingClosingCosts)
         
         viewModel.updateProject(updatedProject)
-        presentationMode.wrappedValue.dismiss()
+        dismiss()
     }
     
     private var isoFormatter: ISO8601DateFormatter {

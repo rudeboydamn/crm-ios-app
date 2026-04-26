@@ -12,7 +12,7 @@ struct RehabProject: Identifiable, Codable {
     var id: String = UUID().uuidString
     var propertyAddress: String = ""
     var propertyName: String = ""
-    var status: String = ProjectStatus.planning.rawValue
+    var status: ProjectStatus = .planning
     var purchaseDate: String?
     var sellDate: String?
     var measuredSqft: Double?
@@ -20,6 +20,7 @@ struct RehabProject: Identifiable, Codable {
     
     // Purchase Costs
     var propertyPurchase: Double?
+    var purchasePrice: Double? // Alias for propertyPurchase
     var homeInspection: Double?
     var appraisal: Double?
     var survey: Double?
@@ -42,6 +43,7 @@ struct RehabProject: Identifiable, Codable {
     
     // Selling Costs
     var salesRevenue: Double?
+    var afterRepairValue: Double? // Alias for salesRevenue
     var brokerCommissionPercent: Double?
     var homeWarranty: Double?
     var buyerTermite: Double?
@@ -51,6 +53,7 @@ struct RehabProject: Identifiable, Codable {
     // Other
     var bankServiceCharges: Double?
     var quickbooksPropertyName: String?
+    var projectedROI: Double? // Add missing property
     
     // Calculated fields (from API)
     var totalPurchaseCosts: Double?
@@ -70,8 +73,18 @@ struct RehabProject: Identifiable, Codable {
         propertyName.isEmpty ? propertyAddress : propertyName
     }
     
-    var totalBudget: Double {
+    var budgetTotal: Double {
         (totalPurchaseCosts ?? 0) + (totalRehabCosts ?? 0) + (totalHoldingCosts ?? 0)
+    }
+    
+    var totalBudget: Double {
+        get {
+            budgetTotal
+        }
+        set {
+            // This setter is here for backward compatibility but doesn't actually store
+            // The value is always computed from the cost components
+        }
     }
     
     var totalSpent: Double {
@@ -94,6 +107,12 @@ struct RehabProject: Identifiable, Codable {
         roi ?? 0
     }
     
+    var projectedProfit: Double {
+        let revenue = afterRepairValue ?? salesRevenue ?? 0
+        let costs = totalSpent
+        return revenue - costs
+    }
+    
     var startDate: Date? {
         guard let purchaseDate = purchaseDate else { return nil }
         return RehabProject.iso8601.date(from: purchaseDate)
@@ -105,7 +124,13 @@ struct RehabProject: Identifiable, Codable {
     }
     
     var statusDisplay: String {
-        status.replacingOccurrences(of: "_", with: " ").capitalized
+        switch status {
+        case .planning: return "Planning"
+        case .active: return "Active"
+        case .onHold: return "On Hold"
+        case .completed: return "Completed"
+        case .cancelled: return "Cancelled"
+        }
     }
     
     private static let iso8601: ISO8601DateFormatter = {
@@ -124,6 +149,7 @@ struct RehabProject: Identifiable, Codable {
         case measuredSqft = "measured_sqft"
         case rehabType = "rehab_type"
         case propertyPurchase = "property_purchase"
+        case purchasePrice = "purchase_price"
         case homeInspection = "home_inspection"
         case appraisal
         case survey
@@ -140,6 +166,7 @@ struct RehabProject: Identifiable, Codable {
         case lawnCare = "lawn_care"
         case holdingOther = "holding_other"
         case salesRevenue = "sales_revenue"
+        case afterRepairValue = "after_repair_value"
         case brokerCommissionPercent = "broker_commission_percent"
         case homeWarranty = "home_warranty"
         case buyerTermite = "buyer_termite"
@@ -147,6 +174,7 @@ struct RehabProject: Identifiable, Codable {
         case sellingClosingCosts = "selling_closing_costs"
         case bankServiceCharges = "bank_service_charges"
         case quickbooksPropertyName = "quickbooks_property_name"
+        case projectedROI = "projected_roi"
         case totalPurchaseCosts = "total_purchase_costs"
         case totalRehabCosts = "total_rehab_costs"
         case totalHoldingCosts = "total_holding_costs"

@@ -12,11 +12,11 @@ final class RehabProjectViewModel: ObservableObject {
     
     var filteredProjects: [RehabProject] {
         guard let status = selectedStatus else { return projects }
-        return projects.filter { $0.status == status }
+        return projects.filter { $0.status.rawValue == status }
     }
     
     var activeProjects: [RehabProject] {
-        projects.filter { $0.status == "active" || $0.status == "Active" }
+        projects.filter { $0.status.rawValue == "active" || $0.status.rawValue == "Active" }
     }
     
     var totalBudget: Double {

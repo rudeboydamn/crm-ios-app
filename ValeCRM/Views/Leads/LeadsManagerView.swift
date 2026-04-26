@@ -203,7 +203,7 @@ struct AllLeadsListView: View {
     private func deleteLeads(at offsets: IndexSet) {
         for index in offsets {
             let lead = filteredLeads[index]
-            viewModel.deleteLead(id: lead.id)
+            viewModel.deleteLead(lead)
         }
     }
 }
@@ -218,8 +218,7 @@ struct FilterLabel: View {
             Text(title)
             Image(systemName: "chevron.down")
         }
-        .font(.caption)
-        .fontWeight(.medium)
+        .font(.caption.weight(.medium))
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(isActive ? Color.blue : Color(.systemGray5))
@@ -528,7 +527,7 @@ struct LeadTasksView: View {
     private func deleteTasks(at offsets: IndexSet) {
         for index in offsets {
             let task = filteredTasks[index]
-            taskVM.deleteTask(id: task.id)
+            taskVM.deleteTask(task)
         }
     }
 }
@@ -882,7 +881,7 @@ struct AddLeadSheet: View {
                     TextField("Last Name", text: $lastName)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                 }
@@ -973,8 +972,8 @@ struct EditLeadSheet: View {
     
     init(lead: Lead) {
         self.lead = lead
-        _firstName = State(initialValue: lead.firstName)
-        _lastName = State(initialValue: lead.lastName)
+        _firstName = State(initialValue: lead.firstName ?? "")
+        _lastName = State(initialValue: lead.lastName ?? "")
         _email = State(initialValue: lead.email ?? "")
         _phone = State(initialValue: lead.phone ?? "")
         _propertyAddress = State(initialValue: lead.propertyAddress ?? "")
@@ -1090,17 +1089,24 @@ struct AddTaskSheet: View {
     private func createTask() {
         let task = Task(
             id: UUID().uuidString,
+            createdAt: Date(),
+            updatedAt: Date(),
             title: title,
             description: description.isEmpty ? nil : description,
+            type: .other,
             status: .pending,
             priority: priority,
             dueDate: hasDueDate ? dueDate : nil,
-            completedAt: nil,
+            completedDate: nil,
+            reminderDate: nil,
             assignedTo: nil,
-            relatedLeadId: nil,
-            relatedProjectId: nil,
-            createdAt: Date(),
-            updatedAt: Date()
+            assignedBy: nil,
+            leadId: nil,
+            clientId: nil,
+            projectId: nil,
+            propertyId: nil,
+            tags: [],
+            notes: nil
         )
         viewModel.createTask(task)
         dismiss()

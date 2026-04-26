@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(iOS 16.0, *)
 struct ProjectsListView: View {
     @EnvironmentObject var viewModel: RehabProjectViewModel
     @State private var showingAddProject = false
@@ -66,24 +67,8 @@ struct ProjectsListView: View {
 
     private var completedProjects: [RehabProject] {
         viewModel.projects.filter { project in
-            project.status.lowercased().contains("completed")
+            project.status == .completed
         }
-    }
-}
-
-private struct EmphasizedDetailModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 16.0, *) {
-            content.fontWeight(.semibold)
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    func emphasizedDetail() -> some View {
-        self.modifier(EmphasizedDetailModifier())
     }
 }
 
@@ -319,8 +304,8 @@ struct ProjectsQuickActionsSection: View {
     }
 }
 
-struct ProjectStatusBadge: View {
-    let status: String?
+struct ProjectStatusBadgeLegacy: View {
+    let status: ProjectStatus
     
     var body: some View {
         Text(statusText)
@@ -333,23 +318,23 @@ struct ProjectStatusBadge: View {
     }
     
     private var statusColor: Color {
-        guard let status = status?.lowercased() else { return .gray }
-        if status.contains("planning") { return .blue }
-        if status.contains("active") { return .green }
-        if status.contains("hold") { return .orange }
-        if status.contains("completed") { return .purple }
-        if status.contains("cancelled") { return .red }
-        return .gray
+        switch status {
+        case .planning: return .blue
+        case .active: return .green
+        case .onHold: return .orange
+        case .completed: return .purple
+        case .cancelled: return .red
+        }
     }
     
     private var statusText: String {
-        status?.replacingOccurrences(of: "_", with: " ").capitalized ?? "Unknown"
+        status.rawValue.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
 
 struct AddProjectView: View {
     @EnvironmentObject var viewModel: RehabProjectViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var propertyAddress = ""
     @State private var propertyName = ""
@@ -386,7 +371,7 @@ struct AddProjectView: View {
             .navigationTitle("New Project")
             .navigationBarItems(
                 leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 },
                 trailing: Button("Save") {
                     saveProject()
@@ -404,13 +389,13 @@ struct AddProjectView: View {
         var project = RehabProject()
         project.propertyName = propertyName
         project.propertyAddress = propertyAddress
-        project.status = status
+        project.status = ProjectStatus(rawValue: status) ?? .planning
         project.purchaseDate = isoFormatter.string(from: startDate)
         project.totalPurchaseCosts = Double(totalBudget)
         project.totalRehabCosts = Double(totalRehabCosts)
         
         viewModel.createProject(project)
-        presentationMode.wrappedValue.dismiss()
+        dismiss()
     }
     
     private var isoFormatter: ISO8601DateFormatter {
@@ -420,13 +405,23 @@ struct AddProjectView: View {
     }
 }
 
+@available(iOS 16.0, *)
 struct ProjectDetailView: View {
     let project: RehabProject
     @EnvironmentObject var viewModel: RehabProjectViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false
     
     var body: some View {
+        if #available(iOS 16.0, *) {
+            ios16Body
+        } else {
+            ios15Body
+        }
+    }
+    
+    @available(iOS 16.0, *)
+    private var ios16Body: some View {
         NavigationView {
             List {
                 // Project Overview
@@ -450,10 +445,10 @@ struct ProjectDetailView: View {
                 // Timeline
                 Section(header: Text("Timeline")) {
                     if let startDate = project.startDate {
-                        DetailRow(label: "Purchase Date", value: startDate.formatted(date: .abbreviated, time: .omitted))
+                        DetailRow(label: "Purchase Date", value: formatDate(startDate))
                     }
                     if let completionDate = project.completionDate {
-                        DetailRow(label: "Sell Date", value: completionDate.formatted(date: .abbreviated, time: .omitted))
+                        DetailRow(label: "Sell Date", value: formatDate(completionDate))
                     }
                 }
                 
@@ -590,7 +585,7 @@ struct ProjectDetailView: View {
                     
                     Button(role: .destructive, action: {
                         viewModel.deleteProject(project)
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }) {
                         HStack {
                             Spacer()
@@ -603,7 +598,193 @@ struct ProjectDetailView: View {
             .navigationTitle(project.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(trailing: Button("Done") {
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
+            })
+            .sheet(isPresented: $isEditing) {
+                EditProjectView(project: project)
+                    .environmentObject(viewModel)
+            }
+        }
+    }
+    
+    private var ios15Body: some View {
+        NavigationView {
+            List {
+                // Project Overview
+                Section(header: Text("Project Overview")) {
+                    DetailRow(label: "Property Name", value: project.propertyName.isEmpty ? "—" : project.propertyName)
+                    DetailRow(label: "Address", value: project.propertyAddress)
+                    HStack {
+                        Text("Status")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        ProjectStatusBadge(status: project.status)
+                    }
+                    if let sqft = project.measuredSqft {
+                        DetailRow(label: "Square Footage", value: "\(Int(sqft)) sqft")
+                    }
+                    if let rehabType = project.rehabType {
+                        DetailRow(label: "Rehab Type", value: rehabType)
+                    }
+                    if let startDate = project.startDate {
+                        DetailRow(label: "Purchase Date", value: formatDate(startDate))
+                    }
+                    if let completionDate = project.completionDate {
+                        DetailRow(label: "Sell Date", value: formatDate(completionDate))
+                    }
+                }
+                
+                // Timeline
+                Section(header: Text("Timeline")) {
+                }
+                
+                // Financial Summary
+                Section(header: Text("Financial Summary")) {
+                    if let revenue = project.salesRevenue {
+                        DetailRow(label: "Sales Revenue", value: formatCurrency(revenue))
+                    }
+                    if let investment = project.totalInvestment {
+                        DetailRow(label: "Total Investment", value: formatCurrency(investment))
+                    }
+                    if let netIncome = project.netIncome {
+                        DetailRow(label: "Net Income", value: formatCurrency(netIncome))
+                    }
+                    if let roi = project.roi {
+                        HStack {
+                            Text("ROI")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(roi, specifier: "%.1f")%")
+                                .fontWeight(.semibold)
+                                .foregroundColor(roi > 0 ? .green : .red)
+                        }
+                    }
+                }
+                
+                // Purchase Costs
+                Section(header: Text("Purchase Costs")) {
+                    if let cost = project.propertyPurchase {
+                        DetailRow(label: "Property Purchase", value: formatCurrency(cost))
+                    }
+                    if let cost = project.homeInspection {
+                        DetailRow(label: "Home Inspection", value: formatCurrency(cost))
+                    }
+                    if let cost = project.appraisal {
+                        DetailRow(label: "Appraisal", value: formatCurrency(cost))
+                    }
+                    if let cost = project.survey {
+                        DetailRow(label: "Survey", value: formatCurrency(cost))
+                    }
+                    if let cost = project.lenderFees {
+                        DetailRow(label: "Lender Fees", value: formatCurrency(cost))
+                    }
+                    if let cost = project.purchaseClosingCosts {
+                        DetailRow(label: "Closing Costs", value: formatCurrency(cost))
+                    }
+                    if let cost = project.purchaseOther {
+                        DetailRow(label: "Other", value: formatCurrency(cost))
+                    }
+                    if let total = project.totalPurchaseCosts {
+                        DetailRow(label: "Total Purchase Costs", value: formatCurrency(total))
+                            .emphasizedDetail()
+                    }
+                }
+                
+                // Rehab Costs
+                Section(header: Text("Rehab Costs")) {
+                    if let cost = project.totalContractor {
+                        DetailRow(label: "Contractor Costs", value: formatCurrency(cost))
+                    }
+                    if let cost = project.totalMaterials {
+                        DetailRow(label: "Materials", value: formatCurrency(cost))
+                    }
+                    if let total = project.totalRehabCosts {
+                        DetailRow(label: "Total Rehab Costs", value: formatCurrency(total))
+                            .emphasizedDetail()
+                    }
+                }
+                
+                // Holding Costs
+                Section(header: Text("Holding Costs")) {
+                    if let cost = project.mortgageInterest {
+                        DetailRow(label: "Mortgage Interest", value: formatCurrency(cost))
+                    }
+                    if let cost = project.investorMortgageInterest {
+                        DetailRow(label: "Investor Mortgage Interest", value: formatCurrency(cost))
+                    }
+                    if let cost = project.propertyTaxes {
+                        DetailRow(label: "Property Taxes", value: formatCurrency(cost))
+                    }
+                    if let cost = project.insurance {
+                        DetailRow(label: "Insurance", value: formatCurrency(cost))
+                    }
+                    if let cost = project.totalUtilities {
+                        DetailRow(label: "Utilities", value: formatCurrency(cost))
+                    }
+                    if let cost = project.lawnCare {
+                        DetailRow(label: "Lawn Care", value: formatCurrency(cost))
+                    }
+                    if let cost = project.holdingOther {
+                        DetailRow(label: "Other", value: formatCurrency(cost))
+                    }
+                    if let total = project.totalHoldingCosts {
+                        DetailRow(label: "Total Holding Costs", value: formatCurrency(total))
+                            .emphasizedDetail()
+                    }
+                }
+                
+                // Selling Costs
+                Section(header: Text("Selling Costs")) {
+                    if let percent = project.brokerCommissionPercent {
+                        DetailRow(label: "Broker Commission", value: "\(percent, default: "%.1f")%")
+                    }
+                    if let cost = project.homeWarranty {
+                        DetailRow(label: "Home Warranty", value: formatCurrency(cost))
+                    }
+                    if let cost = project.buyerTermite {
+                        DetailRow(label: "Buyer Termite", value: formatCurrency(cost))
+                    }
+                    if let cost = project.closingCostsBuyer {
+                        DetailRow(label: "Closing Costs (Buyer)", value: formatCurrency(cost))
+                    }
+                    if let cost = project.sellingClosingCosts {
+                        DetailRow(label: "Selling Closing Costs", value: formatCurrency(cost))
+                    }
+                    if let total = project.totalSellingCosts {
+                        DetailRow(label: "Total Selling Costs", value: formatCurrency(total))
+                            .emphasizedDetail()
+                    }
+                }
+
+                
+                // Actions
+                Section {
+                    Button(action: {
+                        isEditing = true
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Edit Project")
+                            Spacer()
+                        }
+                    }
+                    
+                    Button(role: .destructive, action: {
+                        viewModel.deleteProject(project)
+                        dismiss()
+                    }) {
+                        HStack {
+                            Spacer()
+                            Text("Delete Project")
+                            Spacer()
+                        }
+                    }
+                }
+            }
+            .navigationTitle(project.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(trailing: Button("Done") {
+                dismiss()
             })
             .sheet(isPresented: $isEditing) {
                 EditProjectView(project: project)
@@ -614,5 +795,12 @@ struct ProjectDetailView: View {
     
     private func formatCurrency(_ value: Double) -> String {
         return String(format: "$%.2f", value)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
     }
 }

@@ -14,9 +14,8 @@ enum LeadStatus: String, Codable, CaseIterable {
     case new
     case contacted
     case qualified
-    case appointmentScheduled = "appointment_scheduled"
-    case offerMade = "offer_made"
-    case contract
+    case negotiating
+    case underContract = "under_contract"
     case closed
     case lost
 }

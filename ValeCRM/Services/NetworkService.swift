@@ -538,7 +538,9 @@ final class NetworkService: ObservableObject {
         var dict: [String: Any] = [:]
         dict["id"] = communication.id
         dict["type"] = communication.type.rawValue
-        dict["direction"] = communication.direction.rawValue
+        if let direction = communication.direction {
+            dict["direction"] = direction.rawValue
+        }
         dict["subject"] = communication.subject
         dict["content"] = communication.content
         if let duration = communication.duration { dict["duration"] = duration }

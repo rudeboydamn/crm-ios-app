@@ -1,5 +1,6 @@
 import SwiftUI
 
+@available(iOS 16.0, *)
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthManager
     
@@ -183,7 +184,7 @@ struct ProfileView: View {
     }
 }
 
-struct SettingsView: View {
+struct AppInfoView: View {
     @EnvironmentObject var authManager: AuthManager
     
     var body: some View {
@@ -258,13 +259,17 @@ struct CommunicationsView: View {
                             Text(comm.displayTitle)
                                 .font(.headline)
                         }
-                        Text(comm.content)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                        Text(comm.createdAt, style: .relative)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if let content = comm.content {
+                            Text(content)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+                        if let date = comm.createdAt {
+                            Text(date, style: .relative)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding(.vertical, 4)
                 }

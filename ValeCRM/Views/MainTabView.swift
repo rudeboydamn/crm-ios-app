@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - Main Tab View (Root Navigation)
+@available(iOS 16.0, *)
 struct MainTabView: View {
     @EnvironmentObject var authManager: AuthManager
     @StateObject private var dashboardVM = DashboardViewModel()
@@ -19,6 +20,7 @@ struct MainTabView: View {
                 .environmentObject(projectVM)
                 .environmentObject(leadsVM)
                 .environmentObject(taskVM)
+                .environmentObject(commsVM)
                 .tabItem {
                     Label("Home", systemImage: "house.fill")
                 }
@@ -54,15 +56,17 @@ struct MainTabView: View {
         }
         .accentColor(.blue)
         .onAppear {
-            loadInitialData()
+            loadData()
         }
     }
     
-    private func loadInitialData() {
-        dashboardVM.fetchDashboardMetrics()
+    private func loadData() {
+        dashboardVM.fetchMetrics()
         portfolioVM.fetchPortfolioData()
         projectVM.fetchProjects()
         leadsVM.fetchLeads()
+        commsVM.fetchCommunications()
+        commsVM.fetchContacts()
         taskVM.fetchTasks()
     }
 }
@@ -74,16 +78,15 @@ struct DashboardHomeView: View {
     @EnvironmentObject var projectVM: RehabProjectViewModel
     @EnvironmentObject var leadsVM: LeadViewModel
     @EnvironmentObject var taskVM: TaskViewModel
+    @EnvironmentObject var commsVM: CommunicationViewModel
     @State private var showingSettings = false
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Welcome Header
                     welcomeHeader
                     
-                    // Quick Stats Grid
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                         OverviewCard(
                             title: "Portfolio Value",
@@ -119,27 +122,22 @@ struct DashboardHomeView: View {
                     }
                     .padding(.horizontal)
                     
-                    // Portfolio Summary
                     DashboardSection(title: "Portfolio Overview", icon: "building.2") {
                         PortfolioSummaryCard(viewModel: portfolioVM)
                     }
                     
-                    // Active Projects
                     DashboardSection(title: "Active Projects", icon: "hammer") {
                         ActiveProjectsCard(projects: Array(projectVM.projects.prefix(3)))
                     }
                     
-                    // Recent Leads
                     DashboardSection(title: "Recent Leads", icon: "person.badge.plus") {
                         RecentLeadsCard(leads: Array(leadsVM.leads.prefix(5)))
                     }
                     
-                    // Upcoming Tasks
                     DashboardSection(title: "Upcoming Tasks", icon: "calendar") {
                         UpcomingTasksCard(tasks: taskVM.pendingTasks.prefix(5).map { $0 })
                     }
                     
-                    // Communications Summary
                     DashboardSection(title: "Communications", icon: "envelope") {
                         CommsSummaryCard()
                     }
@@ -155,7 +153,7 @@ struct DashboardHomeView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: refreshAll) {
+                    Button(action: reloadData) {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
@@ -164,7 +162,7 @@ struct DashboardHomeView: View {
                 SettingsView()
             }
             .refreshable {
-                refreshAll()
+                reloadData()
             }
         }
     }
@@ -195,11 +193,13 @@ struct DashboardHomeView: View {
         return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
     
-    private func refreshAll() {
-        dashboardVM.fetchDashboardMetrics()
+    private func reloadData() {
+        dashboardVM.fetchMetrics()
         portfolioVM.fetchPortfolioData()
         projectVM.fetchProjects()
         leadsVM.fetchLeads()
+        commsVM.fetchCommunications()
+        commsVM.fetchContacts()
         taskVM.fetchTasks()
     }
 }
@@ -441,7 +441,7 @@ struct LeadRowSmall: View {
 
 // MARK: - Upcoming Tasks Card
 struct UpcomingTasksCard: View {
-    let tasks: [Task]
+    let tasks: [CRMTask]
     
     var body: some View {
         VStack(spacing: 8) {
@@ -464,7 +464,7 @@ struct UpcomingTasksCard: View {
 }
 
 struct TaskRowSmall: View {
-    let task: Task
+    let task: CRMTask
     
     var body: some View {
         HStack {
@@ -600,6 +600,10 @@ struct EmptyStateSmall: View {
 }
 
 #Preview {
-    MainTabView()
-        .environmentObject(AuthManager(networkService: NetworkService.shared))
+    if #available(iOS 16.0, *) {
+        MainTabView()
+            .environmentObject(AuthManager())
+    } else {
+        // Fallback on earlier versions
+    }
 }

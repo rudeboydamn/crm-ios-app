@@ -495,7 +495,7 @@ struct EmailComposeSheet: View {
     
     @State private var toEmail = ""
     @State private var subject = ""
-    @State private var body = ""
+    @State private var messageBody = ""
     @State private var selectedTemplate: String?
     
     var body: some View {
@@ -504,7 +504,7 @@ struct EmailComposeSheet: View {
                 Section {
                     TextField("To", text: $toEmail)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Subject", text: $subject)
                 }
                 
@@ -518,7 +518,7 @@ struct EmailComposeSheet: View {
                 }
                 
                 Section("Message") {
-                    TextEditor(text: $body)
+                    TextEditor(text: $messageBody)
                         .frame(minHeight: 200)
                 }
             }
@@ -542,7 +542,7 @@ struct EmailComposeSheet: View {
     }
     
     private func sendEmail() {
-        viewModel.sendEmail(to: toEmail, subject: subject, body: body)
+        viewModel.sendEmail(to: toEmail, subject: subject, body: messageBody)
         dismiss()
     }
 }
@@ -955,7 +955,7 @@ struct AddTemplateSheet: View {
     @State private var name = ""
     @State private var type = "email"
     @State private var subject = ""
-    @State private var body = ""
+    @State private var templateBody = ""
     
     let types = ["email", "sms"]
     
@@ -978,7 +978,7 @@ struct AddTemplateSheet: View {
                 }
                 
                 Section("Message") {
-                    TextEditor(text: $body)
+                    TextEditor(text: $templateBody)
                         .frame(minHeight: 150)
                 }
             }
@@ -990,14 +990,14 @@ struct AddTemplateSheet: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") { saveTemplate() }
-                        .disabled(name.isEmpty || body.isEmpty)
+                        .disabled(name.isEmpty || templateBody.isEmpty)
                 }
             }
         }
     }
     
     private func saveTemplate() {
-        viewModel.createTemplate(name: name, type: type, subject: type == "email" ? subject : nil, body: body)
+        viewModel.createTemplate(name: name, type: type, subject: type == "email" ? subject : nil, body: templateBody)
         dismiss()
     }
 }
@@ -1009,13 +1009,13 @@ struct EditTemplateSheet: View {
     
     @State private var name: String
     @State private var subject: String
-    @State private var body: String
+    @State private var templateBody: String
     
     init(template: CommunicationTemplate) {
         self.template = template
         _name = State(initialValue: template.name)
         _subject = State(initialValue: template.subject ?? "")
-        _body = State(initialValue: template.body)
+        _templateBody = State(initialValue: template.body)
     }
     
     var body: some View {
@@ -1032,7 +1032,7 @@ struct EditTemplateSheet: View {
                 }
                 
                 Section("Message") {
-                    TextEditor(text: $body)
+                    TextEditor(text: $templateBody)
                         .frame(minHeight: 150)
                 }
             }
@@ -1217,7 +1217,7 @@ struct AddContactSheet: View {
                     TextField("Last Name", text: $lastName)
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                     TextField("Phone", text: $phone)
                         .keyboardType(.phonePad)
                 }

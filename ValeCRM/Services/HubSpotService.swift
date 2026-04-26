@@ -156,9 +156,9 @@ final class HubSpotService: ObservableObject {
             return "lead"
         case .contacted, .qualified:
             return "marketingqualifiedlead"
-        case .appointmentScheduled:
+        case .negotiating:
             return "salesqualifiedlead"
-        case .offerMade, .contract:
+        case .underContract:
             return "opportunity"
         case .closed:
             return "customer"
@@ -173,11 +173,9 @@ final class HubSpotService: ObservableObject {
             return "appointmentscheduled"
         case .qualified:
             return "qualifiedtobuy"
-        case .appointmentScheduled:
+        case .negotiating:
             return "presentationscheduled"
-        case .offerMade:
-            return "decisionmakerboughtin"
-        case .contract:
+        case .underContract:
             return "contractsent"
         case .closed:
             return "closedwon"
